@@ -35,6 +35,8 @@ VR headset game, multi-camera rigs, shuttle/racket tracking.
   .md/.pdf docs — read them for research context (esp.
   `badminton_camera_research.md` §6 pipeline + data schema).
 - Python CV/ML code lives in `tools/` (create as needed). Unity code in `Assets/Scripts/`.
+- Data: raw videos in `data/raw/` (gitignored, named `YYYYMMDD_<desc>.mp4`);
+  extracted `skeleton.json` in `data/skeleton/` (committed selectively).
 - `Assets/Editor/CourtBuilder.cs` builds the court: Tools ▸ Badminton ▸ Build Court.
   Court runs along Z (length 13.40 m), X = width (6.10 m), Y-up, meters, origin
   at court center. **skeleton.json uses these same conventions.**
