@@ -35,10 +35,30 @@ public static class SkeletonPlayerSetup
 
         FrameCamera();
 
+        // Edit-mode preview so the twin is visible immediately (frame 0), without
+        // entering Play. These preview objects use DontSave so they don't clutter
+        // the saved scene; pressing Play rebuilds the skeleton live.
+        var doc = SkeletonDoc.Load(DefaultClip);
+        if (doc == null)
+        {
+            Debug.LogError("[SkeletonPlayerSetup] Could NOT load clip '" + DefaultClip +
+                "'. Expected at Assets/StreamingAssets/" + DefaultClip +
+                ". Run the Python extractor and copy the JSON there.");
+        }
+        else
+        {
+            renderer.Build(doc);
+            renderer.ShowFrame(doc, 0);
+            foreach (Transform child in twin.transform)
+                child.gameObject.hideFlags = HideFlags.DontSave;
+            Debug.Log("[SkeletonPlayerSetup] Twin built: " + doc.FrameCount +
+                " frames, " + doc.Duration.ToString("F1") + "s. " +
+                "Showing frame 0 in edit mode; press Play to animate.");
+        }
+
         Selection.activeGameObject = twin;
+        SceneView.FrameLastActiveSceneView();
         EditorSceneManager.MarkSceneDirty(twin.scene);
-        Debug.Log("[SkeletonPlayerSetup] Twin ready. Clip: " + DefaultClip +
-                  ". Press Play to watch it move.");
     }
 
     static void FrameCamera()
