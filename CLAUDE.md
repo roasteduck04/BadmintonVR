@@ -10,11 +10,14 @@ Read `docs/superpowers/specs/2026-07-12-video-to-unity-twin-design.md` for the
 approved design (phases, schema, decisions) before making architectural changes.
 
 ## Milestone phases
-1. **Phase 1 (current):** offline phone clip → stick-figure twin in Unity.
-2. **Phase 2:** fine-tune a badminton-specific pose model (RTMPose/ViTPose class)
+1. **Phase 1 (current):** phone clip → stick-figure twin in Unity, pose only —
+   NO court calibration; twin plays in place at court center.
+2. **Phase 2:** court anchoring — corner-click homography → `root_court_xz`;
+   twin moves around the court.
+3. **Phase 3:** fine-tune a badminton-specific pose model (RTMPose/ViTPose class)
    on existing datasets (VideoBadminton, ShuttleSet, MultiSenseBadminton) — on
    Colab/cloud GPU, exported to ONNX.
-3. **Phase 3:** near-live: Python inference server first, then in-Unity ONNX via
+4. **Phase 4:** near-live: Python inference server first, then in-Unity ONNX via
    Sentis (`com.unity.ai.inference`, already a dependency).
 
 **Parked (do not design for now):** drones, injury/biomechanics (OpenSim),
