@@ -66,3 +66,11 @@ crashlytics-build.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# Raw capture videos (large binaries; keep cloud backups instead)
+data/raw/
+
+# Python
+tools/.venv/
+__pycache__/
+*.pyc
