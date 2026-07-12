@@ -81,7 +81,11 @@ One JSON file per processed clip.
       "time": 0.0,
       "root_court_xz": null,            // meters, court coords; null in Phase 1,
       "root_confidence": null,          //   populated from Phase 2 (homography)
-      "joints": [ [x, y, z, confidence], /* 33 entries, hip-relative meters, Unity axes */ ]
+      "joints_flat": [ x, y, z, confidence, /* ... 33 joints = 132 floats, */ ]
+                                       // hip-relative meters, Unity axes,
+                                       // joint_names order. Flat (not nested)
+                                       // so Unity JsonUtility parses it with no
+                                       // extra packages.
     }
   ]
 }
