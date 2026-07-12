@@ -37,18 +37,21 @@ PHONE VIDEO ──► [ PYTHON: extraction ] ──► skeleton.json ──► [
 - **The contract**: a versioned JSON schema. Both sides depend only on it. It is
   the load-bearing decision of the whole project; changes require a version bump.
 
-### 2.1 Why the twin doesn't run in place (pose + root split)
+### 2.1 Pose + root split (root arrives in Phase 2)
 
 MediaPipe world landmarks are **hip-centered** — pose only, no court position.
 So the pipeline splits:
 
-1. **Pose** (limb configuration): MediaPipe pseudo-3D world landmarks, hip-relative.
+1. **Pose** (limb configuration): MediaPipe pseudo-3D world landmarks,
+   hip-relative. **This is all of Phase 1** — the twin plays in place, anchored
+   at court center.
 2. **Root translation** (where on court): the player's feet position in *image
    pixels*, mapped through a **court homography** (user clicks the 4 court
-   corners once per clip) → court-relative X/Z in meters.
+   corners once per clip) → court-relative X/Z in meters. **Added in Phase 2.**
 
 Unity composes them: stick figure posed by (1), positioned by (2). This matches
-`player_court_position` in the research note's §6.2 schema.
+`player_court_position` in the research note's §6.2 schema. The schema carries
+`root_court_xz` from v1 (nullable), so adding it in Phase 2 is non-breaking.
 
 ---
 
@@ -65,16 +68,14 @@ One JSON file per processed clip.
   "coordinate_system": "unity",       // left-handed, Y-up, meters, court center = origin,
                                        // +Z toward far baseline (matches CourtBuilder)
   "joint_names": [ /* MediaPipe 33-landmark names, fixed order */ ],
-  "court": {
-    "corners_image": [[x,y],[x,y],[x,y],[x,y]],   // clicked corners, image px
-    "homography": [ /* 3x3 row-major, image → court meters */ ]
-  },
+  "court": null,                       // Phase 2+: { corners_image: 4x[x,y],
+                                       //   homography: 3x3 image→court meters }
   "frames": [
     {
       "frame_id": 0,
       "time": 0.0,
-      "root_court_xz": [1.23, -4.56],   // meters, court coords; null if unknown
-      "root_confidence": 0.92,
+      "root_court_xz": null,            // meters, court coords; null in Phase 1,
+      "root_confidence": null,          //   populated from Phase 2 (homography)
       "joints": [ [x, y, z, confidence], /* 33 entries, hip-relative meters, Unity axes */ ]
     }
   ]
@@ -93,25 +94,36 @@ Rules:
 
 ## 4. Phases
 
-### Phase 1 — workable phone video → Unity twin (offline) ← CURRENT
-**Input:** one phone clip — fixed tripod, court lines visible (at least the
-player's half), one player, ~10–30 s of strokes + footwork. User has court
-access and will record this.
+### Phase 1 — video → skeleton model in Unity (no court calibration) ← CURRENT
+**Input:** any phone clip of one player — fixed camera, player fully in frame,
+~10–30 s of strokes + footwork. Court lines NOT required.
 
 **Deliverables:**
-1. `tools/extract_skeleton.py` — Python: court-corner click UI (OpenCV) →
-   homography; MediaPipe per-frame pose; feet→court root path; smoothing
-   (confidence-gated, e.g. One-Euro or Savitzky-Golay); writes schema-v1 JSON.
+1. `tools/extract_skeleton.py` — Python: MediaPipe per-frame pseudo-3D pose;
+   smoothing (confidence-gated, e.g. One-Euro or Savitzky-Golay); writes
+   schema-v1 JSON. No homography, no corner clicking.
 2. `Assets/Scripts/SkeletonPlayer/` — Unity: JSON importer + **stick-figure**
-   renderer (spheres + bone lines) on the CourtBuilder court, with
-   play / pause / scrub / speed controls.
+   renderer (spheres + bone lines) anchored at court center on the CourtBuilder
+   court, with play / pause / scrub / speed controls. The twin plays in place.
 3. Side-by-side validation: original video vs twin playback, eyeballed.
 
 **Decisions made:** approximate-3D fidelity (not metric); stick figure first,
 **rigged Humanoid avatar is a stretch goal** after the data looks right;
-skeleton only (no shuttle/racket).
+skeleton only (no shuttle/racket); court anchoring deferred to Phase 2.
 
-### Phase 2 — badminton-tuned skeleton model
+### Phase 2 — court-anchored twin (homography)
+**Goal:** the twin moves around the court like the real player, not in place.
+
+**Input:** phone clip re-recorded with the court lines visible (at least the
+player's half), fixed tripod — roughly VideoBadminton-style framing.
+
+**Deliverables:**
+1. Court-corner click UI (OpenCV) → homography (with reprojection sanity check).
+2. Feet-pixels → court X/Z root path, smoothed, written into the same schema
+   (`court` + `root_court_xz` fields populate; non-breaking change).
+3. Unity SkeletonPlayer drives root position from `root_court_xz`.
+
+### Phase 3 — badminton-tuned skeleton model
 **Goal:** replace generic MediaPipe with a pose model that is measurably better
 on badminton motion (lunges, smashes, occlusion, unusual facing).
 
@@ -124,10 +136,10 @@ on badminton motion (lunges, smashes, occlusion, unusual facing).
 - Evaluation per the research note §8: joint jitter, limb-length stability,
   missing-joint rate, plus visual review — not a single end-to-end score.
 
-### Phase 3 — near-live video → Unity twin
+### Phase 4 — near-live video → Unity twin
 **Goal:** point a phone at a rally, see the twin move with seconds-or-less delay.
 
-Two routes, decided by a Phase 3 spike:
+Two routes, decided by a Phase 4 spike:
 - **Route A — Python inference server:** phone/webcam → Python (ONNX runtime) →
   skeleton frames streamed to Unity over WebSocket/UDP. Same schema, streamed
   not file-loaded. Lower risk, works first.
@@ -143,14 +155,14 @@ Plan: A first, B as the follow-on once A proves the loop.
 ## 5. Error handling & quality
 - Low-confidence / missing joints: interpolate short gaps, flag long ones in
   `occlusion_quality_flags`-style fields; Unity fades those bones.
-- Homography sanity check: reprojected court corners must land within tolerance;
-  refuse to write JSON otherwise.
+- Homography sanity check (Phase 2+): reprojected court corners must land within
+  tolerance; refuse to write JSON otherwise.
 - Extraction is deterministic and idempotent: same clip in → same JSON out;
   JSON is committed test-fixture material for the Unity side.
 
 ## 6. Testing
 - **Python:** unit tests on coordinate conversion (known synthetic poses),
-  homography round-trip, schema validation (jsonschema).
+  schema validation (jsonschema); homography round-trip from Phase 2.
 - **Unity:** a committed sample `skeleton.json` fixture; SkeletonPlayer play-mode
   test that loads it and steps frames without exceptions; visual check in editor.
 - **End-to-end:** the recorded phone clip → JSON → twin, reviewed side-by-side.
@@ -159,7 +171,7 @@ Plan: A first, B as the follow-on once A proves the loop.
 | Risk | Mitigation |
 |---|---|
 | MediaPipe struggles with fast smashes / unusual facing | Accepted for Phase 1 (approx fidelity); Phase 2 exists precisely to fix this |
-| Depth/orientation wrong in pseudo-3D | Known BST finding; twin is "approximate", root position stays trustworthy via homography |
+| Depth/orientation wrong in pseudo-3D | Known BST finding; twin is "approximate"; Phase 2 homography gives a trustworthy root position independent of pose depth |
 | Laptop can't train | All training on Colab/cloud; laptop does MediaPipe + Unity only |
 | Unity MCP connection flaky | File-based workflow works regardless; user can run menu items manually |
-| Court corners mis-clicked | Reprojection sanity check + easy re-run |
+| Court corners mis-clicked (Phase 2) | Reprojection sanity check + easy re-run |
