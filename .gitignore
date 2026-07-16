@@ -74,3 +74,13 @@ data/raw/
 tools/.venv/
 __pycache__/
 *.pyc
+
+# Privacy: frame-bearing images (video frames of people/places) stay local
+data/**/*.png
+data/**/*.jpg
+data/calib/archive/
+docs/img/
+
+# Third-party avatar model (unclear redistribution license) — supply your own
+Assets/Avatar/character.fbx
+Assets/Avatar/character.fbx.meta
