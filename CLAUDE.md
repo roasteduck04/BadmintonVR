@@ -8,20 +8,53 @@ a regulation court.
 
 Read `docs/superpowers/specs/2026-07-12-video-to-unity-twin-design.md` for the
 approved design (phases, schema, decisions) before making architectural changes.
+**Read `docs/PROGRESS.md` for what is already built and how to run it** — and
+append a dated entry there when something new lands.
 
 ## Milestone phases
-1. **Phase 1 (current):** phone clip → stick-figure twin in Unity, pose only —
-   NO court calibration; twin plays in place at court center.
-2. **Phase 2:** court anchoring — corner-click homography → `root_court_xz`;
-   twin moves around the court.
-3. **Phase 3:** fine-tune a badminton-specific pose model (RTMPose/ViTPose class)
-   on existing datasets (VideoBadminton, ShuttleSet, MultiSenseBadminton) — on
-   Colab/cloud GPU, exported to ONNX.
-4. **Phase 4:** near-live: Python inference server first, then in-Unity ONNX via
+1. **Phase 1 (DONE):** phone clip → stick-figure/humanoid twin in Unity, pose
+   only — NO court calibration; twin plays in place at court center.
+2. **Phase 2 — single-phone court position.** Split into two sub-phases after
+   the 2026-07-15 calibration post-mortem (the first attempt's calibration was
+   off — see `docs/PROGRESS.md` and `docs/DOCUMENTARY.md`):
+   - **Phase 2.1 (DONE) — corner tracking & calibration.** Clean, correctly-labeled
+     ground-plane homography from one static phone (`tools/calibrate_court.py`).
+     First attempt on `position_front.mp4` FAILED (0.6x ultrawide from the ground;
+     right-side corners clicked on the neighboring paint set). Re-shot as stills
+     from a higher corner angle at 1.0x (`data/raw/court_2.jpg`) and calibrated
+     successfully → `data/calib/court_2_court.json` (see `docs/PROGRESS.md`
+     2026-07-16). Gotchas for this hall: floor tiles run parallel to the court so
+     AUTO corner-detection fails — use the interactive click; and the box sits
+     DIAGONALLY in frame (`corner_fr` is top-CENTER, not the right edge).
+   - **Phase 2.2 — position → Unity twin.** With a valid 2.1 calibration,
+     `extract_skeleton.py --court` maps the foot pixel → `root_court_xz` and
+     `HumanoidPoseDriver` / `SkeletonPlayback` moves the twin there. The pipeline
+     plumbing (old Phase 2) is already built; it just needs a correct calibration
+     to feed it. Basic movement only, minimum hardware.
+   **Scope: ONE half-court only** (the void-deck paint is just the
+   SSL→baseline half; no net line). Tracked half = +Z (net z=0,
+   baseline z=6.70); calibrate with `_f` points + `--half far`.
+2.5. **Racket (current).** Locate the racket together with the skeleton.
+   Step 1 (DONE 2026-07-16): arm-estimated orange racket in Unity
+   (`RacketVisual`, grip at right wrist along elbow→wrist; per-clip flag —
+   test_3/4/5 carry a racket). Step 2: detection — try zero-shot COCO
+   "tennis racket" first, then Roboflow badminton data / auto-labeling on
+   Colab; fuse with the arm prior for 3D orientation. See
+   `docs/ai-smoothing-plan.md` (racket tie-in section).
+3. **Phase 3:** **two-camera (OpenCap-style)** capture. *Plan NOT concrete
+   yet — single camera is the working assumption for now.* Triangulate 2× 2D pose
+   into accurate 3D position + pose using court-corner PnP calibration. Both
+   cameras on one side, behind the baseline, ~6–7 m apart (~65° crossing angle).
+   This fixed rig doubles as the bulk training-data capture setup.
+4. **Phase 4:** fine-tune a badminton-specific pose model (RTMPose/ViTPose class)
+   on existing datasets (VideoBadminton, ShuttleSet, MultiSenseBadminton) plus the
+   Phase-3 captures — on Colab/cloud GPU, exported to ONNX.
+5. **Phase 5:** near-live: Python inference server first, then in-Unity ONNX via
    Sentis (`com.unity.ai.inference`, already a dependency).
 
 **Parked (do not design for now):** drones, injury/biomechanics (OpenSim),
-VR headset game, multi-camera rigs, shuttle/racket tracking.
+VR headset game, shuttle tracking. (Racket tracking is UN-parked — it is
+Phase 2.5. Multi-camera is Phase 3 but its plan is not concrete.)
 
 ## Hard constraints
 - **This laptop has NO NVIDIA GPU** (Intel Iris Xe). MediaPipe-class CPU
@@ -31,15 +64,22 @@ VR headset game, multi-camera rigs, shuttle/racket tracking.
   prefer file-based editing; the user can click menu items manually.
 
 ## Layout & conventions
-- Repo root = this folder (`BadmintonVR/`). Outer folder holds the 3 research
-  .md/.pdf docs — read them for research context (esp.
+- Repo root = this folder (`BadmintonVR/`). Research notes live in
+  `docs/research/` (moved from the outer folder 2026-07-16; the .pdf twins
+  stay outside the repo) — read them for research context (esp.
   `badminton_camera_research.md` §6 pipeline + data schema).
 - Python CV/ML code lives in `tools/` (create as needed). Unity code in `Assets/Scripts/`.
-- Data: raw videos in `data/raw/` (gitignored, named `YYYYMMDD_<desc>.mp4`);
-  extracted `skeleton.json` in `data/skeleton/` (committed selectively).
+- Data: raw videos in `data/raw/` (gitignored, named `test_N.mp4`;
+  `position_front` was renamed `test_5` on 2026-07-16); extracted
+  `skeleton.json` in `data/skeleton/`. **Privacy rule for the public repo:**
+  every frame-bearing image (`data/**/*.png|jpg`, `docs/img/`) is gitignored —
+  never commit images containing video frames of people/places.
 - `Assets/Editor/CourtBuilder.cs` builds the court: Tools ▸ Badminton ▸ Build Court.
   Court runs along Z (length 13.40 m), X = width (6.10 m), Y-up, meters, origin
   at court center. **skeleton.json uses these same conventions.**
 - Coordinate conversion (Y-flip, handedness) happens in **Python**, never Unity.
-- GitHub: roasteduck04/BadmintonVR (private; user wants it public eventually —
-  confirm before flipping).
+- GitHub: roasteduck04/BadmintonVR — **public** (user flipped it 2026-07-16).
+  Mind the privacy rule above with every commit.
+- Runtime helper objects (video-compare canvas, racket, debug trail) must live
+  at the SCENE ROOT — `SkeletonRenderer.Clear()` destroys all twin children on
+  every clip load.
