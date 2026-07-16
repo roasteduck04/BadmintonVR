@@ -15,6 +15,8 @@ namespace BadmintonVR.SkeletonPlayer
     {
         public int frame_id;
         public float time;
+        public float[] root_court_xz;  // [x, z] court meters (Phase 2); null/empty in Phase 1 clips
+        public float root_confidence;
         public float[] joints_flat; // 33 * [x, y, z, confidence]
     }
 
@@ -43,6 +45,19 @@ namespace BadmintonVR.SkeletonPlayer
         }
 
         public float JointConf(int frame, int joint) => frames[frame].joints_flat[joint * Stride + 3];
+
+        /// <summary>True if this clip carries Phase-2 court positions.</summary>
+        public bool HasRoot => FrameCount > 0 && frames[0].root_court_xz != null
+                               && frames[0].root_court_xz.Length == 2;
+
+        /// <summary>Player ground position in court coords (X width, Z length, origin center).</summary>
+        public Vector2 RootXZ(int frame)
+        {
+            var r = frames[frame].root_court_xz;
+            return (r != null && r.Length == 2) ? new Vector2(r[0], r[1]) : Vector2.zero;
+        }
+
+        public float RootConf(int frame) => frames[frame].root_confidence;
 
         /// <summary>Lowest joint Y across the whole clip — used to stand the twin on the floor.</summary>
         public float MinY()

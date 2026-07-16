@@ -5,8 +5,10 @@ namespace BadmintonVR.SkeletonPlayer
 {
     /// <summary>
     /// Loads a skeleton.json and plays it back on a SkeletonRenderer with a
-    /// clock (play/pause/scrub/speed). Twin plays in place at this object's
-    /// position (Phase 1: no court root translation).
+    /// clock (play/pause/scrub/speed). If the clip carries court positions
+    /// (extracted with --court, Phase 2) and driveRootPosition is on, the whole
+    /// stick figure walks to root_court_xz each frame; otherwise it plays in
+    /// place at this object's position (Phase 1).
     /// </summary>
     [RequireComponent(typeof(SkeletonRenderer))]
     public class SkeletonPlayback : MonoBehaviour
@@ -17,6 +19,15 @@ namespace BadmintonVR.SkeletonPlayer
         public bool loop = true;
         [Range(0.1f, 2f)] public float speed = 1f;
 
+        [Header("Court position (Phase 2)")]
+        [Tooltip("Walk the stick figure to root_court_xz when the clip has it " +
+                 "(extracted with --court). Off = play in place at court center.")]
+        public bool driveRootPosition = true;
+        [Tooltip("Frames whose root confidence is below this hold the last position.")]
+        [Range(0f, 1f)] public float rootConfidenceCutoff = 0.2f;
+        [Tooltip("Smoothing for the root position: 0 = raw, 1 = very smooth (laggy).")]
+        [Range(0f, 0.95f)] public float rootSmoothing = 0.2f;
+
         public SkeletonDoc Doc { get; private set; }
         public bool IsPlaying { get; private set; }
         public int CurrentFrame { get; private set; }
@@ -24,6 +35,9 @@ namespace BadmintonVR.SkeletonPlayer
 
         SkeletonRenderer _renderer;
         float _clock; // seconds into the clip
+        float _rootY;          // spawn height, preserved while moving on XZ
+        Vector3 _rootCurrent;  // last applied root position (for smoothing)
+        bool _rootActive;
 
         void Awake() => _renderer = GetComponent<SkeletonRenderer>();
 
@@ -40,10 +54,36 @@ namespace BadmintonVR.SkeletonPlayer
             _renderer.Build(Doc);
             _clock = 0f;
             CurrentFrame = 0;
+
+            _rootActive = driveRootPosition && Doc.HasRoot;
+            _rootY = transform.position.y;
+            _rootCurrent = transform.position;
+            if (_rootActive)
+            {
+                // jump straight to the clip's start position (no lerp-in from spawn)
+                Vector2 xz = Doc.RootXZ(0);
+                _rootCurrent = new Vector3(xz.x, _rootY, xz.y);
+                transform.position = _rootCurrent;
+            }
+
             _renderer.ShowFrame(Doc, 0);
             Debug.Log($"[SkeletonPlayer] loaded {Path.GetFileName(path)}: " +
-                      $"{Doc.FrameCount} frames, {Doc.Duration:F1}s @ {Doc.Fps:F0}fps");
+                      $"{Doc.FrameCount} frames, {Doc.Duration:F1}s @ {Doc.Fps:F0}fps" +
+                      (_rootActive ? " (walking on court)" : " (in place)"));
             return true;
+        }
+
+        // Move the whole stick figure to the player's court position for this frame.
+        void ApplyRoot(int frame)
+        {
+            if (!_rootActive) return;
+            if (Doc.RootConf(frame) < rootConfidenceCutoff) return;
+            Vector2 xz = Doc.RootXZ(frame);
+            Vector3 target = new Vector3(xz.x, _rootY, xz.y);
+            _rootCurrent = rootSmoothing <= 0f
+                ? target
+                : Vector3.Lerp(target, _rootCurrent, rootSmoothing);
+            transform.position = _rootCurrent;
         }
 
         void Update()
@@ -66,6 +106,7 @@ namespace BadmintonVR.SkeletonPlayer
             if (Doc == null) return;
             _clock = Mathf.Clamp(t, 0f, Doc.Duration);
             CurrentFrame = Mathf.Clamp(Mathf.RoundToInt(_clock * Doc.Fps), 0, Doc.FrameCount - 1);
+            ApplyRoot(CurrentFrame);
             _renderer.ShowFrame(Doc, CurrentFrame);
         }
 

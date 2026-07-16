@@ -1,14 +1,17 @@
 """
-extract_skeleton.py — Phase 1 of the BadmintonVR video->twin pipeline.
+extract_skeleton.py — Phases 1+2 of the BadmintonVR video->twin pipeline.
 
 Video (phone clip) -> MediaPipe Pose -> smoothed, Unity-space skeleton.json.
 
-Phase 1 scope: pose only, hip-centered (the twin plays in place at court
-center). No court homography / root translation yet (that is Phase 2).
+Phase 1: pose only, hip-centered (the twin plays in place).
+Phase 2: pass --court <calib.json> (from tools/calibrate_court.py) and the
+player's foot pixel is projected through the ground-plane homography every
+frame, filling `root_court_xz` (court X,Z in meters, origin at court center)
+and `root_confidence` so Unity can move the twin around the court.
 
 Usage:
     python tools/extract_skeleton.py data/raw/clip.mp4
-    python tools/extract_skeleton.py data/raw/clip.mp4 --rotate 90 --debug-frame
+    python tools/extract_skeleton.py data/raw/clip.mp4 --court data/calib/clip_court.json
 
 Output: data/skeleton/<clip>.json (schema v1) + optional debug PNG.
 """
@@ -20,7 +23,7 @@ import sys
 
 import cv2
 import numpy as np
-from scipy.signal import savgol_filter
+from scipy.signal import medfilt, savgol_filter
 
 import mediapipe as mp
 from mediapipe.tasks import python as mp_python
@@ -54,7 +57,9 @@ def rotate_frame(frame, degrees):
 
 
 def extract_raw(video_path, model_path, rotate, min_conf):
-    """Run MediaPipe over the video. Returns (positions[T,33,3], vis[T,33], fps, size, n_frames)."""
+    """Run MediaPipe over the video.
+    Returns (positions[T,33,3], vis[T,33], img_pts[T,33,2], fps, size, n_frames).
+    positions are hip-centered world meters; img_pts are 0..1 normalized image coords."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         sys.exit(f"ERROR: could not open video: {video_path}")
@@ -70,7 +75,7 @@ def extract_raw(video_path, model_path, rotate, min_conf):
     )
     landmarker = mp_vision.PoseLandmarker.create_from_options(options)
 
-    positions, vis = [], []
+    positions, vis, img_pts = [], [], []
     frame_idx = 0
     detected = 0
     out_size = None
@@ -92,10 +97,13 @@ def extract_raw(video_path, model_path, rotate, min_conf):
             lms = result.pose_world_landmarks[0]
             positions.append([[lm.x, lm.y, lm.z] for lm in lms])
             vis.append([lm.visibility for lm in lms])
+            ilms = result.pose_landmarks[0]
+            img_pts.append([[lm.x, lm.y] for lm in ilms])
             detected += 1
         else:
             positions.append([[np.nan] * 3 for _ in range(NUM_JOINTS)])
             vis.append([0.0] * NUM_JOINTS)
+            img_pts.append([[np.nan] * 2 for _ in range(NUM_JOINTS)])
 
         frame_idx += 1
 
@@ -109,7 +117,8 @@ def extract_raw(video_path, model_path, rotate, min_conf):
                  "(portrait phone video is often stored sideways).")
 
     return (np.array(positions, dtype=np.float64),
-            np.array(vis, dtype=np.float64), fps, out_size, frame_idx)
+            np.array(vis, dtype=np.float64),
+            np.array(img_pts, dtype=np.float64), fps, out_size, frame_idx)
 
 
 def clean_and_smooth(pos, vis, min_conf, window):
@@ -138,6 +147,110 @@ def clean_and_smooth(pos, vis, min_conf, window):
         if w >= 5:
             pos = savgol_filter(pos, window_length=w, polyorder=2, axis=0)
     return pos
+
+
+# Foot landmarks used to anchor the player to the floor (heels are the true
+# ground contact; ankles are a fallback ~8cm up, close enough at this range).
+HEELS = [29, 30]
+FOOT_TIPS = [31, 32]
+ANKLES = [27, 28]
+
+
+def build_homography_series(calib, times):
+    """Moving-camera calibration -> a homography for every frame.
+
+    A schema-2.0 calibration holds the same court corners clicked at several
+    timestamps. The court coords are fixed; only the pixels move as the camera
+    pans. So we linearly interpolate each corner's PIXEL position across the
+    keyframe times (clamped at the ends) and solve a fresh homography per frame.
+    Returns H_series[T,3,3].
+    """
+    kfs = sorted(calib["keyframes"], key=lambda k: k["frame_time"])
+    if len(kfs) < 2:
+        sys.exit("ERROR: multi-keyframe calibration needs >= 2 keyframes.")
+    kt = np.array([k["frame_time"] for k in kfs], dtype=np.float64)
+    labels = list(kfs[0]["points"].keys())
+    for k in kfs:
+        if list(k["points"].keys()) != labels:
+            sys.exit("ERROR: keyframes must click the SAME corners in the same order.")
+    court_pts = np.array([kfs[0]["points"][lb]["court_xz"] for lb in labels],
+                         dtype=np.float64)
+    # px[K, L, 2]
+    px = np.array([[kf["points"][lb]["px"] for lb in labels] for kf in kfs],
+                  dtype=np.float64)
+
+    T = len(times)
+    L = len(labels)
+    H_series = np.empty((T, 3, 3), dtype=np.float64)
+    for i, t in enumerate(times):
+        interp_px = np.empty((L, 2), dtype=np.float64)
+        for a in range(2):
+            for l in range(L):
+                interp_px[l, a] = np.interp(t, kt, px[:, l, a])  # clamps at ends
+        Hf, _ = cv2.findHomography(interp_px, court_pts, 0)
+        if Hf is None:
+            sys.exit(f"ERROR: homography solve failed at t={t:.2f}s (degenerate corners?)")
+        H_series[i] = Hf
+    print(f"  moving-camera calibration: {len(kfs)} keyframes "
+          f"[{', '.join(f'{v:.1f}s' for v in kt)}] -> per-frame homography")
+    return H_series
+
+
+def court_positions(img_pts, vis, size, H, fps, min_conf, court_margin=1.5):
+    """Project the player's foot point through the ground-plane homography.
+
+    img_pts: [T,33,2] normalized image coords; H: image px -> court XZ (meters),
+    either a single (3,3) matrix or a per-frame stack (T,3,3) for a moving camera.
+    Returns (root_xz[T,2], root_conf[T]). Frames where no foot is reliably
+    visible are interpolated from neighbors and get low confidence.
+    """
+    T = img_pts.shape[0]
+    w, h = size
+    per_frame_H = (H.ndim == 3)
+    root_xz = np.full((T, 2), np.nan)
+    root_conf = np.zeros(T)
+
+    for t in range(T):
+        # ground point = mean of visible heel/foot-tip landmarks (fallback: ankles)
+        cand = [j for j in HEELS + FOOT_TIPS if vis[t, j] >= min_conf]
+        if not cand:
+            cand = [j for j in ANKLES if vis[t, j] >= min_conf]
+        if not cand or np.isnan(img_pts[t, cand, 0]).any():
+            continue
+        px = img_pts[t, cand, 0].mean() * w
+        py = img_pts[t, cand, 1].mean() * h
+        Ht = H[t] if per_frame_H else H
+        xz = cv2.perspectiveTransform(
+            np.array([[[px, py]]], dtype=np.float64), Ht).reshape(2)
+        root_xz[t] = xz
+        root_conf[t] = float(vis[t, cand].mean())
+
+    good = ~np.isnan(root_xz[:, 0])
+    n_good = int(good.sum())
+    print(f"  court position: {n_good}/{T} frames with a grounded foot "
+          f"({100.0 * n_good / max(T, 1):.1f}%)")
+    if n_good < 2:
+        print("  WARNING: too few grounded frames; root_court_xz left empty.")
+        return None, None
+
+    # interpolate gaps, kill single-frame spikes (e.g. a brief lock onto a
+    # bystander), then smooth (walking-scale motion)
+    idx = np.arange(T)
+    for a in range(2):
+        root_xz[~good, a] = np.interp(idx[~good], idx[good], root_xz[good, a])
+    if T >= 5:
+        for a in range(2):
+            root_xz[:, a] = medfilt(root_xz[:, a], kernel_size=5)
+    win = int(round(fps * 0.25))  # ~0.25 s
+    win = max(5, win | 1)         # odd, >= 5
+    if T >= win:
+        root_xz = savgol_filter(root_xz, window_length=win, polyorder=2, axis=0)
+
+    # clamp to court + margin so a bad detection can't fling the twin away
+    half_w, half_l = 3.05, 6.70
+    root_xz[:, 0] = np.clip(root_xz[:, 0], -half_w - court_margin, half_w + court_margin)
+    root_xz[:, 1] = np.clip(root_xz[:, 1], -half_l - court_margin, half_l + court_margin)
+    return root_xz, root_conf
 
 
 def to_unity(pos, flip_z):
@@ -183,7 +296,18 @@ def main():
     ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270])
     ap.add_argument("--flip-z", action="store_true", help="flip depth axis if the twin faces the wrong way")
     ap.add_argument("--debug-frame", action="store_true", help="also write a middle frame with keypoints drawn")
+    ap.add_argument("--court", default=None, metavar="CALIB_JSON",
+                    help="court calibration from tools/calibrate_court.py; "
+                         "fills root_court_xz (Phase 2 position)")
     args = ap.parse_args()
+
+    calib = None
+    if args.court:
+        with open(args.court) as f:
+            calib = json.load(f)
+        if args.rotate != calib.get("rotate", 0):
+            sys.exit("ERROR: --rotate differs from the calibration frame's rotation; "
+                     "recalibrate on the same orientation.")
 
     if not os.path.exists(args.model):
         sys.exit(f"ERROR: model not found: {args.model}\nSee tools/README.md for the download command.")
@@ -198,9 +322,21 @@ def main():
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     print(f"Extracting: {args.video}")
-    pos, vis, fps, size, n_frames = extract_raw(args.video, args.model, args.rotate, args.min_confidence)
+    pos, vis, img_pts, fps, size, n_frames = extract_raw(args.video, args.model, args.rotate, args.min_confidence)
     pos = clean_and_smooth(pos, vis, args.min_confidence, args.smooth_window)
     pos = to_unity(pos, args.flip_z)
+
+    root_xz, root_conf = None, None
+    if calib is not None:
+        if calib.get("image_size") and calib["image_size"] != size:
+            print(f"  WARNING: calibration image size {calib['image_size']} != video {size}")
+        if "keyframes" in calib:
+            times = np.arange(pos.shape[0], dtype=np.float64) / fps
+            H = build_homography_series(calib, times)
+        else:
+            H = np.array(calib["homography_img_to_court"], dtype=np.float64)
+        root_xz, root_conf = court_positions(
+            img_pts, vis, size, H, fps, args.min_confidence)
 
     frames = []
     for i in range(pos.shape[0]):
@@ -213,11 +349,13 @@ def main():
                                 round(float(pos[i, j, 1]), 5),
                                 round(float(pos[i, j, 2]), 5),
                                 round(float(vis[i, j]), 3)])
+        has_root = root_xz is not None
         frames.append({
             "frame_id": i,
             "time": round(i / fps, 4),
-            "root_court_xz": None,      # Phase 2
-            "root_confidence": None,    # Phase 2
+            "root_court_xz": [round(float(root_xz[i, 0]), 4),
+                              round(float(root_xz[i, 1]), 4)] if has_root else None,
+            "root_confidence": round(float(root_conf[i]), 3) if has_root else None,
             "joints_flat": joints_flat,
         })
 
@@ -230,7 +368,13 @@ def main():
                       "flip_z": args.flip_z},
         "coordinate_system": "unity",
         "joint_names": LANDMARK_NAMES,
-        "court": None,                  # Phase 2
+        "court": {
+            "calibration": os.path.basename(args.court),
+            "convention": calib.get("convention"),
+            "reprojection_error_m": calib.get("reprojection_error_m"),
+            "multi_keyframe": calib.get("multi_keyframe", False),
+            "num_keyframes": len(calib["keyframes"]) if "keyframes" in calib else None,
+        } if calib is not None else None,
         "frames": frames,
     }
 
