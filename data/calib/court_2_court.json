@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "video": "court_2.jpg",
+  "frame_time": 1.0,
+  "image_size": [
+    1280,
+    960
+  ],
+  "convention": "court XZ, meters, origin center; +Z away from camera, +X right of camera; camera side is -Z",
+  "half": "far",
+  "points": {
+    "ssl_fl": {
+      "px": [
+        427.0,
+        795.0
+      ],
+      "court_xz": [
+        -3.05,
+        1.98
+      ]
+    },
+    "ssl_fr": {
+      "px": [
+        1063.0,
+        445.0
+      ],
+      "court_xz": [
+        3.05,
+        1.98
+      ]
+    },
+    "corner_fr": {
+      "px": [
+        635.0,
+        324.0
+      ],
+      "court_xz": [
+        3.05,
+        6.7
+      ]
+    },
+    "corner_fl": {
+      "px": [
+        47.0,
+        424.0
+      ],
+      "court_xz": [
+        -3.05,
+        6.7
+      ]
+    }
+  },
+  "reprojection_error_m": {
+    "ssl_fl": 0.0,
+    "ssl_fr": 0.0,
+    "corner_fr": 0.0,
+    "corner_fl": 0.0
+  },
+  "homography_img_to_court": [
+    [
+      -0.030079748832763657,
+      0.07192853149716089,
+      -13.67460476641387
+    ],
+    [
+      0.024339304520846247,
+      0.012653078601844215,
+      -40.35888742973407
+    ],
+    [
+      0.0008676207435520068,
+      -0.014370335653990415,
+      1.0
+    ]
+  ]
+}
