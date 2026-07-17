@@ -93,5 +93,75 @@ def detect_strokes(speed, fps, min_peak_speed=3.0, min_gap_s=0.5):
     return peaks
 
 
+def root_speed(doc, smooth_k=9):
+    """Court-space player speed m/s; falls back to mid-hip XZ (body drift ~0
+    when hip-centered — that is fine: no court data usually also means the
+    Phase-1 in-place clip, where 'moving' is meaningless anyway)."""
+    n, fps = len(doc["frames"]), fps_of(doc)
+    xz = np.zeros((n, 2))
+    for i, fr in enumerate(doc["frames"]):
+        r = fr.get("root_court_xz")
+        if r and len(r) == 2:
+            xz[i] = r
+        else:
+            hips = (joint_xyz(doc, i, L_HIP) + joint_xyz(doc, i, R_HIP)) / 2
+            xz[i] = (hips[0], hips[2])
+    sp = np.zeros(n)
+    sp[1:] = np.linalg.norm(np.diff(xz, axis=0), axis=1) * fps
+    sp[0] = sp[1] if n > 1 else 0.0
+    k = np.ones(smooth_k) / smooth_k
+    return np.convolve(sp, k, mode="same")
+
+
+def segment_clip(doc, speed, peaks, fps, moving_speed=0.8,
+                 edge_frac=0.25, edge_floor=1.0,
+                 min_half_s=0.15, max_half_s=1.0):
+    """Tile frames 0..n-1 into stroke ('stroke', labeled later) / moving /
+    idle segments. No gaps, no overlaps; peak inside its stroke segment."""
+    n = len(speed)
+    windows = []
+    for p in peaks:
+        cut = max(edge_frac * speed[p], edge_floor)
+        lo_lim = p - int(max_half_s * fps)
+        hi_lim = p + int(max_half_s * fps)
+        lo = p
+        while lo - 1 >= max(0, lo_lim) and (np.isnan(speed[lo - 1]) or speed[lo - 1] > cut):
+            lo -= 1
+        hi = p
+        while hi + 1 <= min(n - 1, hi_lim) and (np.isnan(speed[hi + 1]) or speed[hi + 1] > cut):
+            hi += 1
+        lo = min(lo, p - int(min_half_s * fps))
+        hi = max(hi, p + int(min_half_s * fps))
+        lo, hi = max(0, lo), min(n - 1, hi)
+        if windows and lo <= windows[-1][1]:          # overlapping strokes: split at midpoint
+            mid = (windows[-1][2] + p) // 2
+            windows[-1] = (windows[-1][0], mid, windows[-1][2])
+            lo = mid + 1
+        windows.append((lo, hi, p))
+
+    rsp = root_speed(doc)
+
+    def fill_gap(a, b, out):
+        """Label frames a..b (inclusive) as moving/idle runs by root speed."""
+        if a > b:
+            return
+        run_start, run_moving = a, bool(rsp[a] > moving_speed)
+        for i in range(a + 1, b + 2):
+            moving = bool(rsp[i] > moving_speed) if i <= b else None
+            if i > b or moving != run_moving:
+                out.append({"start": run_start, "end": i - 1,
+                            "label": "moving" if run_moving else "idle"})
+                if i <= b:
+                    run_start, run_moving = i, moving
+
+    segments, cursor = [], 0
+    for lo, hi, p in windows:
+        fill_gap(cursor, lo - 1, segments)
+        segments.append({"start": lo, "end": hi, "peak": int(p), "label": "stroke"})
+        cursor = hi + 1
+    fill_gap(cursor, n - 1, segments)
+    return segments
+
+
 if __name__ == "__main__":
     raise SystemExit("CLI arrives in a later task; import the functions for now.")
