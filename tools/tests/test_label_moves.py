@@ -90,3 +90,54 @@ def test_detect_strokes_below_threshold_ignored():
     add_swing(doc, 100, peak_speed=1.0)        # gentle drift, not a stroke
     sp = wrist_speed(doc)
     assert detect_strokes(sp, fps=60.0) == []
+
+
+# ---------------------------------------------------------------- Task 2
+
+from label_moves import root_speed, segment_clip
+
+
+def assert_tiles(segments, n_frames):
+    assert segments[0]["start"] == 0
+    assert segments[-1]["end"] == n_frames - 1
+    for a, b in zip(segments, segments[1:]):
+        assert b["start"] == a["end"] + 1
+
+
+def test_segment_tiling_no_strokes_idle():
+    doc = make_doc()
+    sp = wrist_speed(doc)
+    segs = segment_clip(doc, sp, [], fps=60.0)
+    assert_tiles(segs, 200)
+    assert [s["label"] for s in segs] == ["idle"]
+
+
+def test_segment_stroke_window_and_tiling():
+    doc = make_doc(n_frames=400)
+    add_swing(doc, 200)
+    sp = wrist_speed(doc)
+    segs = segment_clip(doc, sp, detect_strokes(sp, 60.0), fps=60.0)
+    assert_tiles(segs, 400)
+    strokes = [s for s in segs if s["label"] == "stroke"]
+    assert len(strokes) == 1
+    s = strokes[0]
+    assert s["start"] <= s["peak"] <= s["end"]   # peak inside its own segment
+    assert s["start"] <= 200 <= s["end"]
+    dur = (s["end"] - s["start"] + 1) / 60.0
+    assert 0.2 <= dur <= 2.0        # spec acceptance bounds
+
+
+def test_segment_moving_vs_idle_by_root():
+    doc = make_doc(n_frames=200)
+    for i in range(200):             # walk 2 m/s along +z in court space
+        doc["frames"][i]["root_court_xz"] = [0.0, 2.0 + 2.0 * i / 60.0]
+    sp = wrist_speed(doc)
+    segs = segment_clip(doc, sp, [], fps=60.0)
+    assert [s["label"] for s in segs] == ["moving"]
+
+
+def test_root_speed_falls_back_to_hips():
+    doc = make_doc()
+    for f in doc["frames"]:
+        f["root_court_xz"] = None
+    assert root_speed(doc).shape == (200,)
