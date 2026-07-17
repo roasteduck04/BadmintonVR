@@ -596,5 +596,52 @@ TOWARD each capture target.
 - `HumanoidPoseDriver.poseSource` — the skinned avatar can follow the same
   driven pose (Add To Twin wires it automatically); its own Slerp smoothing
   is bypassed when driven. Both bodies switchable, per the design decision.
-- NOT yet verified in Play mode (Unity MCP bridge + permission classifier
-  were down at build time) — first Play-mode check is the next step.
+- VERIFIED 2026-07-17: Unity console clean (0 errors, 0 warnings) after the
+  user opened the editor; user's verdict on the driven twin: "overall, from
+  what i can see, it looks good."
+
+## 2026-07-17 — Racket: wrist articulation + zero-shot detection works
+
+**Racket no longer parallel to the arm** (user: "the racket shouldnt be force
+to be parallel to the arm since the wrist can move it"). `RacketVisual` now
+blends the forearm line toward the **wrist→knuckle-midpoint** direction using
+MediaPipe hand landmarks 18/20 (right) or 17/19 (left) — they were already in
+`skeleton.json`, just unused — and rolls the string bed with the palm normal
+(cross product of the knuckle rays). `handInfluence` (0..1, default 0.85)
+trades articulation against hand-landmark jitter; falls back to the forearm
+line when hand confidence < cutoff. Validated in Unity (`Unity_ValidateScript`
+standard: 0 errors).
+
+**Zero-shot racket detection WORKS on our footage** — `tools/detect_racket.py`
+(new). COCO "tennis racket" class 38, yolov8s, imgsz 1280, conf 0.10, every
+15th frame, CPU:
+
+| clip | sampled | with detection | hit rate | best conf |
+|---|---|---|---|---|
+| test_3 | 99 | 90 | **90.9%** | 0.91 |
+| test_4 | 65 | 31 | 47.7% | 0.86 |
+| test_5 | 95 | 61 | 64.2% | 0.92 |
+
+Boxes verified by eye on the overlays: on the real racket, including a raised
+mid-swing racket at 0.86 conf. Two caveats recorded in
+`docs/ai-smoothing-plan.md`: duplicate boxes on the same racket (~half of
+hits — keep the best box nearest the wrist), and test_4's misses cluster on
+the fast/blurred swing frames we care about most. **No own-data gathering or
+fine-tune needed to start.** Outputs in `data/racket/` — detection JSON is
+committed (boxes only), overlay frames gitignored per the privacy rule; model
+weights (`*.pt`) gitignored.
+
+**Research answer to "is there a study on this already?"** — yes:
+[RacketVision](https://github.com/OrcustD/RacketVision) (AAAI 2026 Oral, MIT
+licence): 1,672 clips / 435k frames of badminton+tennis+table-tennis with
+**5 racket keypoints** (top/bottom/handle/left/right), pretrained checkpoints,
+badminton configs, dataset on HF `linfeng302/RacketVision`. Queued as racket
+Step D (Colab) — real racket orientation + roll, not just a box.
+
+**`docs/muscle-analysis-plan.md` (NEW, plan only)** — un-parks the injury
+thread narrowly: kinematics + stroke segmentation → rule-based muscle
+involvement highlight on the avatar → OpenSim inverse dynamics (Colab) → EMG
+validation against MultiSenseBadminton (GIST/MIT, *Scientific Data* 2024:
+23 h, 25 players, EMG + IMU + foot pressure). Staged by what each stage can
+honestly claim; explicitly does NOT claim injury prediction. Three open
+questions for the user at the end of that doc.
