@@ -700,37 +700,6 @@ Material:
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
---- !u!1 &657761081
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 657761082}
-  m_Layer: 0
-  m_Name: CourtDebugMarkers
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &657761082
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 657761081}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &810010680
 GameObject:
   m_ObjectHideFlags: 0
@@ -2252,6 +2221,8 @@ GameObject:
   - component: {fileID: 1918847839}
   - component: {fileID: 1918847838}
   - component: {fileID: 1918847837}
+  - component: {fileID: 1918847841}
+  - component: {fileID: 1918847842}
   m_Layer: 0
   m_Name: SkeletonTwin
   m_TagString: Untagged
@@ -2284,7 +2255,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 41d97ccffbcd9a341a63f7ed700befb1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  streamingAssetsPath: skeleton/test_4.json
+  streamingAssetsPath: skeleton/test_3.json
   playOnStart: 1
   loop: 1
   speed: 1
@@ -2323,6 +2294,49 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1918847841
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1918847836}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81b425b998d0d9444b9ac6922cb3d754, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rawVideoDir: data/raw
+  layout: 0
+  videoSide: 0
+  gameCamera: {fileID: 0}
+  sizeFraction: 0.35
+  corner: 0
+  syncToPlayback: 1
+  resyncThreshold: 0.15
+  toggleKey: 118
+--- !u!114 &1918847842
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1918847836}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4580d832820a3b145b60385acc312ee2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  clipsWithRacket:
+  - test_3
+  - test_4
+  - test_5
+  hand: 0
+  color: {r: 1, g: 0.45, b: 0.05, a: 1}
+  shaftLength: 0.4
+  headLength: 0.28
+  headWidth: 0.22
+  confidenceCutoff: 0.3
 --- !u!1 &2136621516
 GameObject:
   m_ObjectHideFlags: 0
@@ -2439,4 +2453,3 @@ SceneRoots:
   - {fileID: 621330428}
   - {fileID: 1143300129}
   - {fileID: 1918847840}
-  - {fileID: 657761082}

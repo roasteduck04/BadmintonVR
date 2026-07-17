@@ -43,6 +43,12 @@ namespace BadmintonVR.SkeletonPlayer
         [Tooltip("Temporal smoothing: 0 = raw, 1 = very smooth (laggy).")]
         [Range(0f, 0.95f)] public float smoothing = 0.35f;
 
+        [Header("Pose source (Track B)")]
+        [Tooltip("Optional TwinDriver on the stick twin. When set and active, " +
+                 "this avatar follows the DRIVEN pose (springs + IK + foot lock " +
+                 "+ lookahead) instead of sampling the clip itself.")]
+        public TwinDriver poseSource;
+
         [Header("Root position (Phase 2)")]
         [Tooltip("Move the avatar to root_court_xz when the clip has it (extracted with --court).")]
         public bool driveRootPosition = true;
@@ -180,10 +186,18 @@ namespace BadmintonVR.SkeletonPlayer
             return Mathf.Clamp(f, 0, _doc.FrameCount - 1);
         }
 
+        bool Driven => poseSource != null && poseSource.Active;
+
         void ApplyFrame(int frame)
         {
             // Root position first: the whole body rides on it.
-            if (_rootActive && _doc.RootConf(frame) >= rootConfidenceCutoff)
+            if (Driven && _rootActive)
+            {
+                Vector2 dxz = poseSource.DrivenRootXZ;
+                _rootCurrent = new Vector3(dxz.x, _rootY, dxz.y); // driver already smoothed
+                transform.position = _rootCurrent;
+            }
+            else if (_rootActive && _doc.RootConf(frame) >= rootConfidenceCutoff)
             {
                 Vector2 xz = _doc.RootXZ(frame);
                 Vector3 target = new Vector3(xz.x, _rootY, xz.y);
@@ -227,8 +241,9 @@ namespace BadmintonVR.SkeletonPlayer
             }
         }
 
+        // When following the TwinDriver, its springs already smoothed the pose.
         Quaternion Smooth(Quaternion cur, Quaternion target)
-            => smoothing <= 0f ? target : Quaternion.Slerp(target, cur, smoothing);
+            => (Driven || smoothing <= 0f) ? target : Quaternion.Slerp(target, cur, smoothing);
 
         // Build a rotation whose axes come from a (right, up) pair.
         static Quaternion BasisRot(Vector3 right, Vector3 up)
@@ -239,8 +254,10 @@ namespace BadmintonVR.SkeletonPlayer
             return Quaternion.LookRotation(fwd, up);
         }
 
-        Vector3 P(int frame, int lm) => _doc.JointPos(frame, lm);
-        bool Conf(int frame, int lm) => _doc.JointConf(frame, lm) >= confidenceCutoff;
+        Vector3 P(int frame, int lm)
+            => Driven ? poseSource.JointLocal(lm) : _doc.JointPos(frame, lm);
+        bool Conf(int frame, int lm)
+            => Driven ? poseSource.JointOk(lm) : _doc.JointConf(frame, lm) >= confidenceCutoff;
 
         // --- simple external control (optional) ---
         public void Play() => _playing = true;
