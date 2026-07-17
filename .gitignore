@@ -87,3 +87,6 @@ Assets/Avatar/character.fbx.meta
 
 # Model weights (auto-downloaded by tools/detect_racket.py)
 *.pt
+
+# Move-label debug overlays (frame-bearing video)
+data/moves/

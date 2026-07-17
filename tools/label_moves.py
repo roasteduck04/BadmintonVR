@@ -260,6 +260,33 @@ def print_report(doc, moves, speed, fps, hand):
     print(f"{len(strokes)} strokes / {len(moves)} segments")
 
 
+def render_overlay(video_path, moves, doc_fps, out_path):
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise SystemExit(f"cannot open {video_path}")
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vfps = cap.get(cv2.CAP_PROP_FPS) or doc_fps
+    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*"mp4v"), vfps, (w, h))
+    seg_i, i = 0, 0
+    while True:
+        ok, img = cap.read()
+        if not ok:
+            break
+        f = int(round(i * doc_fps / vfps))        # video frame -> skeleton frame
+        while seg_i + 1 < len(moves) and f > moves[seg_i]["end"]:
+            seg_i += 1
+        m = moves[seg_i]
+        text = m["label"] + (f"  {m['confidence']:.2f}" if "confidence" in m else "")
+        cv2.rectangle(img, (10, 10), (560, 70), (0, 0, 0), -1)
+        cv2.putText(img, text, (20, 55), cv2.FONT_HERSHEY_SIMPLEX, 1.4,
+                    (80, 220, 255), 3)
+        out.write(img); i += 1
+    cap.release(); out.release()
+    print(f"overlay -> {out_path}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Label badminton moves in a skeleton.json")
     ap.add_argument("skeleton", help="e.g. data/skeleton/test_3.json")
@@ -268,6 +295,8 @@ def main():
     ap.add_argument("--report", action="store_true", help="print the timeline (default)")
     ap.add_argument("--write", action="store_true",
                     help="write moves into the json AND the StreamingAssets copy")
+    ap.add_argument("--overlay", metavar="VIDEO",
+                    help="raw video path; writes data/moves/<stem>_moves.mp4 (gitignored)")
     args = ap.parse_args()
 
     doc = load_doc(args.skeleton)
@@ -285,6 +314,12 @@ def main():
             print(f"wrote moves -> {args.skeleton} and {ua}")
         else:
             print(f"wrote moves -> {args.skeleton} (no StreamingAssets copy found)")
+
+    if args.overlay:
+        os.makedirs(os.path.join("data", "moves"), exist_ok=True)
+        stem = os.path.splitext(os.path.basename(args.skeleton))[0]
+        render_overlay(args.overlay, moves, fps,
+                       os.path.join("data", "moves", stem + "_moves.mp4"))
 
 
 if __name__ == "__main__":
