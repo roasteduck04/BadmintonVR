@@ -645,3 +645,37 @@ validation against MultiSenseBadminton (GIST/MIT, *Scientific Data* 2024:
 23 h, 25 players, EMG + IMU + foot pressure). Staged by what each stage can
 honestly claim; explicitly does NOT claim injury prediction. Three open
 questions for the user at the end of that doc.
+
+## 2026-07-17 — Move recognition v1: the twin now says WHAT it's doing
+
+Spec `docs/superpowers/specs/2026-07-17-move-recognition-design.md` (PR #1),
+Approach A landed end-to-end, TDD (19 pytest tests, `tools/tests/`):
+
+- **`tools/label_moves.py`** — racket-wrist speed peaks (hip-centered
+  landmarks → body-relative, locomotion can't fake a swing) mark strokes;
+  segments tile every frame into stroke/moving/idle; transparent rules label
+  strokes (`overhead_smash/overhead_clear/drop/underarm_lift/net_shot/drive`)
+  with margin-based confidence. `--report` explains every label with its
+  feature values; `--overlay` burns labels into a debug video
+  (`data/moves/`, gitignored); `--write` bumps `schema_version` to **1.1**
+  and inserts the `moves` block into BOTH json copies.
+- **All five clips labeled + committed**: test_1 3 strokes, test_2 5,
+  test_3 7, test_4 8, test_5 0 (correct — that's the walking/position clip;
+  its only speed spike is the clip starting mid-motion at frame 0).
+  Eyeball checks: test_3's strokes cluster in the 16–24 s swinging section
+  (smashes on the fast overheads); overlay frame at 18.0 s shows
+  `overhead_smash 0.60` with the racket in hand. smash↔clear / drop↔net
+  confusion is allowed by spec — Approach B (classifier trained on
+  VideoBadminton skeletons, Colab) is the designed fix behind the same
+  contract.
+- **Unity**: `SkeletonDoc` parses the optional `moves` block
+  (`HasMoves`/`MoveAt` binary search; old files unaffected);
+  **`MoveLabelHUD`** (`Tools ▸ Badminton ▸ Move Label ▸ Add To Twin`) shows
+  the current label + confidence top-center and a colored segment timeline
+  with playhead at the bottom. M toggles. Zero in-engine inference.
+- Console clean after recompile (one unrelated transient WindowsVideoMedia
+  flush error from VideoPlayer on test_5.mp4 during an earlier Play session).
+- Plan-vs-reality notes: the plan's synthetic test helpers teleported the
+  wrist (phantom 60 m/s spikes) — fixed to hold position; gentle-stroke
+  tests use 3.8 m/s because 5-frame smoothing pulls 3.5 under the 3.0
+  detection threshold. `data/moves/` added to .gitignore (was NOT covered).

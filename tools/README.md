@@ -131,6 +131,30 @@ Limits: position is only right while a foot is on the floor (fine for
 walking tests; jumps land where the feet are, which is still roughly right),
 and accuracy degrades outside the calibrated court rectangle.
 
+## Move labels (what is the player DOING)
+
+```bash
+# print the move timeline (strokes + moving/idle, with the deciding features)
+tools/.venv/Scripts/python tools/label_moves.py data/skeleton/<clip>.json --report
+
+# write the labels into the json (and the StreamingAssets copy) for Unity
+tools/.venv/Scripts/python tools/label_moves.py data/skeleton/<clip>.json --write
+
+# debug video with the label burned in -> data/moves/ (gitignored)
+tools/.venv/Scripts/python tools/label_moves.py data/skeleton/<clip>.json --overlay data/raw/<clip>.mp4
+```
+
+In Unity: **Tools ▸ Badminton ▸ Move Label ▸ Add To Twin**, Play — banner
+top-center, segment timeline bottom, M toggles. Heuristic v1 (Approach A);
+spec: `docs/superpowers/specs/2026-07-17-move-recognition-design.md`.
+
+## Racket detection probe
+
+```bash
+# zero-shot COCO "tennis racket" over sampled frames -> data/racket/
+tools/.venv/Scripts/python tools/detect_racket.py
+```
+
 ## Run (single video, manual)
 
 ```bash
