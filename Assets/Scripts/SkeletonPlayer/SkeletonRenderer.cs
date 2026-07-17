@@ -77,6 +77,43 @@ namespace BadmintonVR.SkeletonPlayer
             }
         }
 
+        /// <summary>
+        /// Track B: override the figure with an externally DRIVEN pose given in
+        /// WORLD space (TwinDriver). Call after ShowFrame each frame to replace
+        /// the raw MediaPipe placement.
+        /// </summary>
+        public void ShowPoseWorld(Vector3[] world, bool[] visible)
+        {
+            if (_joints == null || world == null) return;
+
+            for (int j = 0; j < SkeletonDoc.NumJoints; j++)
+            {
+                bool ok = visible == null || visible[j];
+                _joints[j].gameObject.SetActive(ok);
+                if (ok) _joints[j].position = world[j];
+            }
+
+            int nBones = PoseTopology.Bones.GetLength(0);
+            for (int b = 0; b < nBones; b++)
+            {
+                int a = PoseTopology.Bones[b, 0], c = PoseTopology.Bones[b, 1];
+                bool ok = (visible == null || (visible[a] && visible[c]));
+                _bones[b].gameObject.SetActive(ok);
+                if (!ok) continue;
+                PlaceBoneWorld(_bones[b], world[a], world[c]);
+            }
+        }
+
+        void PlaceBoneWorld(Transform bone, Vector3 p0, Vector3 p1)
+        {
+            Vector3 mid = (p0 + p1) * 0.5f;
+            Vector3 dir = p1 - p0;
+            float len = dir.magnitude;
+            bone.position = mid;
+            bone.localScale = new Vector3(boneRadius * 2f, Mathf.Max(len * 0.5f, 0.001f), boneRadius * 2f);
+            bone.rotation = len > 1e-5f ? Quaternion.FromToRotation(Vector3.up, dir) : Quaternion.identity;
+        }
+
         void PlaceBone(Transform bone, Vector3 p0, Vector3 p1)
         {
             Vector3 mid = (p0 + p1) * 0.5f;

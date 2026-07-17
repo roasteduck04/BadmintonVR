@@ -39,11 +39,16 @@ namespace BadmintonVR.SkeletonPlayer
         const int RElbow = 14, RWrist = 16, LElbow = 13, LWrist = 15;
 
         SkeletonPlayback _playback;
+        TwinDriver _driver; // optional Track B driver — racket follows the DRIVEN wrist
         Transform _root, _shaft, _head;
         SkeletonDoc _builtFor;
         float _lift; // same ground offset SkeletonRenderer applies (-doc.MinY())
 
-        void Awake() => _playback = GetComponent<SkeletonPlayback>();
+        void Awake()
+        {
+            _playback = GetComponent<SkeletonPlayback>();
+            _driver = GetComponent<TwinDriver>();
+        }
 
         void OnDestroy() { if (_root != null) Destroy(_root.gameObject); }
 
@@ -109,10 +114,20 @@ namespace BadmintonVR.SkeletonPlayer
             if (doc.JointConf(f, wrist) < confidenceCutoff ||
                 doc.JointConf(f, elbow) < confidenceCutoff) { Hide(); return; }
 
-            Vector3 liftV = new Vector3(0, _lift, 0);
-            // same local->world mapping SkeletonRenderer uses for the joints
-            Vector3 w = transform.TransformPoint(doc.JointPos(f, wrist) + liftV);
-            Vector3 e = transform.TransformPoint(doc.JointPos(f, elbow) + liftV);
+            Vector3 w, e;
+            if (_driver != null && _driver.Active && _driver.JointOk(wrist) && _driver.JointOk(elbow))
+            {
+                // TwinDriver ran first (execution order) — follow the driven arm
+                w = _driver.WorldJoint(wrist);
+                e = _driver.WorldJoint(elbow);
+            }
+            else
+            {
+                Vector3 liftV = new Vector3(0, _lift, 0);
+                // same local->world mapping SkeletonRenderer uses for the joints
+                w = transform.TransformPoint(doc.JointPos(f, wrist) + liftV);
+                e = transform.TransformPoint(doc.JointPos(f, elbow) + liftV);
+            }
 
             Vector3 dir = w - e;
             if (dir.sqrMagnitude < 1e-6f) { Hide(); return; }

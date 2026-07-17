@@ -574,3 +574,27 @@ gate, court-ROI masking against bystanders.
   gap fill → Kalman + physics gating → temporal 3D lifting (Colab) → better
   backbone; racket detection path (zero-shot COCO → Roboflow/auto-label
   fine-tune → fuse with arm prior).
+
+## 2026-07-17 — Track B: persistent twin driver (springs + IK + foot lock + lookahead)
+
+Architecture shift (plan: `docs/ai-smoothing-plan.md` Track B): the twin is no
+longer teleported to raw MediaPipe data each frame — one persistent body moves
+TOWARD each capture target.
+
+- **`TwinDriver`** (`Tools ▸ Badminton ▸ Twin Driver ▸ Add To Twin`, on the
+  SkeletonPlayback object): critically-damped springs on root + all 33 joints
+  (halflife-tunable), analytic two-bone IK re-places elbows/knees so limb
+  segments keep the clip's MEDIAN bone lengths (measured once per clip — no
+  breathing limbs), foot locking pins a slow low foot until the captured foot
+  moves `unlockDistance` away (kills ice-skating), and `lookaheadSeconds`
+  peeks ahead in the recording to cancel spring lag (0 = causal, the Phase-5
+  preview). Low-confidence frames stop moving the target and the spring holds
+  — joints never pop in/out. **T toggles RAW vs DRIVEN live.**
+- `SkeletonRenderer.ShowPoseWorld()` — world-space pose override for the
+  stick figure (driver runs at execution order −10, after playback, before
+  `RacketVisual`, which now follows the DRIVEN wrist when the driver is on).
+- `HumanoidPoseDriver.poseSource` — the skinned avatar can follow the same
+  driven pose (Add To Twin wires it automatically); its own Slerp smoothing
+  is bypassed when driven. Both bodies switchable, per the design decision.
+- NOT yet verified in Play mode (Unity MCP bridge + permission classifier
+  were down at build time) — first Play-mode check is the next step.
