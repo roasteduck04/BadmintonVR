@@ -35,12 +35,15 @@ append a dated entry there when something new lands.
    SSL→baseline half; no net line). Tracked half = +Z (net z=0,
    baseline z=6.70); calibrate with `_f` points + `--half far`.
 2.5. **Racket (current).** Locate the racket together with the skeleton.
-   Step 1 (DONE 2026-07-16): arm-estimated orange racket in Unity
-   (`RacketVisual`, grip at right wrist along elbow→wrist; per-clip flag —
-   test_3/4/5 carry a racket). Step 2: detection — try zero-shot COCO
-   "tennis racket" first, then Roboflow badminton data / auto-labeling on
-   Colab; fuse with the arm prior for 3D orientation. See
-   `docs/ai-smoothing-plan.md` (racket tie-in section).
+   Step A (DONE 2026-07-17): `RacketVisual` — orange racket, grip at right
+   wrist, **articulated by the hand landmarks** (wrist→knuckles, palm normal
+   rolls the bed); NOT welded to the forearm. Per-clip flag: test_3/4/5 carry
+   a racket. Step B (DONE 2026-07-17): zero-shot COCO "tennis racket" probe
+   `tools/detect_racket.py` — **works** (test_3 90.9% hit rate, best conf
+   0.92); no own-data gathering needed. Step C (next): fuse best-box-near-wrist
+   with the arm prior → `racket` block in skeleton.json. Step D: RacketVision
+   (AAAI'26, MIT, 5 racket keypoints + pretrained ckpts) on Colab.
+   See `docs/ai-smoothing-plan.md` (racket tie-in section).
 3. **Phase 3:** **two-camera (OpenCap-style)** capture. *Plan NOT concrete
    yet — single camera is the working assumption for now.* Triangulate 2× 2D pose
    into accurate 3D position + pose using court-corner PnP calibration. Both
@@ -52,9 +55,13 @@ append a dated entry there when something new lands.
 5. **Phase 5:** near-live: Python inference server first, then in-Unity ONNX via
    Sentis (`com.unity.ai.inference`, already a dependency).
 
-**Parked (do not design for now):** drones, injury/biomechanics (OpenSim),
-VR headset game, shuttle tracking. (Racket tracking is UN-parked — it is
-Phase 2.5. Multi-camera is Phase 3 but its plan is not concrete.)
+**Parked (do not design for now):** drones, VR headset game, shuttle tracking.
+(Racket tracking is UN-parked — it is Phase 2.5. Multi-camera is Phase 3 but
+its plan is not concrete. **Injury/biomechanics is UN-parked as of 2026-07-17
+at PLAN level only** — the project's purpose is muscle injury in badminton;
+see `docs/muscle-analysis-plan.md`. Do not start implementing it: the user
+said "for this one we plan first", and it is gated on pose quality + racket
+fusion landing first.)
 
 ## Hard constraints
 - **This laptop has NO NVIDIA GPU** (Intel Iris Xe). MediaPipe-class CPU
