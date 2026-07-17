@@ -5,9 +5,12 @@ namespace BadmintonVR.SkeletonPlayer
 {
     /// <summary>
     /// Draws an ESTIMATED racket on the twin: anchored at the racket-hand wrist,
-    /// pointing along the forearm (elbow -> wrist) direction. No detection yet —
-    /// this is the visual baseline the future racket detector gets compared
-    /// against (see docs/ai-smoothing-plan.md and the roadmap).
+    /// oriented by the HAND landmarks (wrist -> knuckles) so wrist flexion and
+    /// deviation articulate the racket instead of it being welded to the
+    /// forearm. Falls back to the elbow -> wrist line when the hand landmarks
+    /// are low-confidence. No detection yet — this is the visual baseline the
+    /// future racket detector gets compared against
+    /// (see docs/ai-smoothing-plan.md and the roadmap).
     ///
     /// Distinct color (orange by default) so it can't be confused with the
     /// yellow joints / blue bones of the skeleton. Only shown for clips listed
@@ -35,8 +38,14 @@ namespace BadmintonVR.SkeletonPlayer
         [Tooltip("Hide the racket when wrist/elbow confidence drops below this.")]
         [Range(0f, 1f)] public float confidenceCutoff = 0.3f;
 
+        [Tooltip("0 = racket welded to the forearm line, 1 = fully follows the hand " +
+                 "(wrist->knuckle) direction. Hand landmarks jitter more than the wrist, " +
+                 "so a bit below 1 keeps it stable.")]
+        [Range(0f, 1f)] public float handInfluence = 0.85f;
+
         // MediaPipe pose landmark indices
         const int RElbow = 14, RWrist = 16, LElbow = 13, LWrist = 15;
+        const int RPinky = 18, RIndex = 20, LPinky = 17, LIndex = 19;
 
         SkeletonPlayback _playback;
         TwinDriver _driver; // optional Track B driver — racket follows the DRIVEN wrist
@@ -108,18 +117,27 @@ namespace BadmintonVR.SkeletonPlayer
             if (_builtFor != doc) { _lift = -doc.MinY(); _builtFor = doc; }
 
             int f = _playback.CurrentFrame;
-            int wrist = hand == Hand.Right ? RWrist : LWrist;
-            int elbow = hand == Hand.Right ? RElbow : LElbow;
+            bool right = hand == Hand.Right;
+            int wrist = right ? RWrist : LWrist;
+            int elbow = right ? RElbow : LElbow;
+            int pinky = right ? RPinky : LPinky;
+            int index = right ? RIndex : LIndex;
 
             if (doc.JointConf(f, wrist) < confidenceCutoff ||
                 doc.JointConf(f, elbow) < confidenceCutoff) { Hide(); return; }
 
-            Vector3 w, e;
+            bool handOk = handInfluence > 0f &&
+                          doc.JointConf(f, pinky) >= confidenceCutoff &&
+                          doc.JointConf(f, index) >= confidenceCutoff;
+
+            Vector3 w, e, pk = default, ix = default;
             if (_driver != null && _driver.Active && _driver.JointOk(wrist) && _driver.JointOk(elbow))
             {
                 // TwinDriver ran first (execution order) — follow the driven arm
                 w = _driver.WorldJoint(wrist);
                 e = _driver.WorldJoint(elbow);
+                handOk = handOk && _driver.JointOk(pinky) && _driver.JointOk(index);
+                if (handOk) { pk = _driver.WorldJoint(pinky); ix = _driver.WorldJoint(index); }
             }
             else
             {
@@ -127,14 +145,37 @@ namespace BadmintonVR.SkeletonPlayer
                 // same local->world mapping SkeletonRenderer uses for the joints
                 w = transform.TransformPoint(doc.JointPos(f, wrist) + liftV);
                 e = transform.TransformPoint(doc.JointPos(f, elbow) + liftV);
+                if (handOk)
+                {
+                    pk = transform.TransformPoint(doc.JointPos(f, pinky) + liftV);
+                    ix = transform.TransformPoint(doc.JointPos(f, index) + liftV);
+                }
             }
 
-            Vector3 dir = w - e;
-            if (dir.sqrMagnitude < 1e-6f) { Hide(); return; }
+            Vector3 forearm = w - e;
+            if (forearm.sqrMagnitude < 1e-6f) { Hide(); return; }
+            forearm.Normalize();
+
+            // Shaft direction: blend forearm line toward wrist->knuckle-midpoint,
+            // so wrist flexion/deviation actually swings the racket.
+            Vector3 dir = forearm;
+            Vector3 palmNormal = Vector3.zero;
+            if (handOk)
+            {
+                Vector3 handDir = (pk + ix) * 0.5f - w;
+                if (handDir.sqrMagnitude > 1e-6f)
+                    dir = Vector3.Slerp(forearm, handDir.normalized, handInfluence);
+                // two knuckle rays span the palm plane; its normal rolls the string bed
+                palmNormal = Vector3.Cross(ix - w, pk - w);
+            }
 
             _root.gameObject.SetActive(true);
-            _root.position = w; // grip at the wrist, blade extends along the forearm line
-            _root.rotation = Quaternion.FromToRotation(Vector3.up, dir.normalized);
+            _root.position = w; // grip at the wrist
+
+            Vector3 bedNormal = Vector3.ProjectOnPlane(palmNormal, dir);
+            _root.rotation = bedNormal.sqrMagnitude > 1e-8f
+                ? Quaternion.LookRotation(bedNormal, dir) // Y = shaft, Z = string bed facing
+                : Quaternion.FromToRotation(Vector3.up, dir);
         }
 
         void Hide() { if (_root != null) _root.gameObject.SetActive(false); }

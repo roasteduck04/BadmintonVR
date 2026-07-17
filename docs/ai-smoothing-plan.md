@@ -84,16 +84,55 @@ Swap/augment MediaPipe with RTMPose/ViTPose (ONNX) batch-run on Colab. Only if
 Step 3 still leaves pose errors — measure first. Feeds Phase 4 (badminton
 fine-tune) later.
 
-## Racket tie-in (next phase, runs in parallel)
+## Racket tie-in (Phase 2.5 — in progress)
 
-The racket is currently **arm-estimated** in Unity (elbow→wrist). Detection
-path, cheapest first:
-1. Zero-shot: COCO "tennis racket" class of an off-the-shelf YOLO on
-   test_3/4/5 frames (CPU-tolerable at low fps offline).
-2. If weak: fine-tune on Roboflow community badminton-racket data (Colab),
-   or auto-label own frames with an open-vocab detector (YOLO-World).
-3. Fuse: arm direction gives 3D orientation prior, detection corrects it;
-   RacketVision-style racket keypoints are the long-term reference.
+### Step A (DONE 2026-07-17) — wrist articulation, no detection needed
+The racket was welded to the elbow→wrist line, which is wrong by 60–90°
+during shots — the wrist is a joint, and MediaPipe already gives us hand
+landmarks we weren't using. `RacketVisual` now orients the shaft by blending
+the forearm line toward the **wrist→knuckle-midpoint** direction
+(landmarks 18/20 right, 17/19 left), and rolls the string bed using the palm
+normal (cross product of the two knuckle rays). `handInfluence` (0..1, default
+0.85) trades articulation against hand-landmark jitter; falls back to the
+forearm line when hand confidence < cutoff. Still an ESTIMATE — but an
+articulated one, and the baseline detection gets judged against.
+
+### Step B (DONE 2026-07-17) — zero-shot probe: `tools/detect_racket.py`
+COCO "tennis racket" (class 38, yolov8s, imgsz 1280, conf 0.10, every 15th
+frame, CPU) on our own footage:
+
+| clip | frames sampled | with detection | hit rate | best conf |
+|---|---|---|---|---|
+| test_3 | 99 | 90 | **90.9%** | 0.91 |
+| test_4 | 65 | 31 | 47.7% | 0.86 |
+| test_5 | 95 | 61 | 64.2% | 0.92 |
+
+Verdict: **zero-shot works** — verified by eye on overlays, boxes are on the
+real racket (incl. a raised mid-swing racket at 0.86). Two caveats:
+- duplicate boxes on the same racket (~half of hits) → keep the highest-conf
+  box nearest the detected wrist, not raw output.
+- test_4 is weakest (player further away / more blur) → the misses are the
+  fast-swing frames, exactly the ones we care about most.
+No own-data gathering, no fine-tune needed to start.
+
+### Step C (next) — fuse detection with the arm prior
+Per frame: take the best box near the wrist → box center + long axis give a 2D
+racket direction → correct the Step-A estimate (which supplies 3D depth the
+box cannot). Gaps (test_4's blurred swings) fall back to the arm estimate, so
+the racket never disappears. Write into `skeleton.json` as a `racket` block
+(schema minor bump, Unity contract preserved).
+
+### Step D (later) — RacketVision for true racket pose
+[RacketVision](https://github.com/OrcustD/RacketVision) (AAAI 2026 Oral, MIT
+licence) is exactly this problem, already solved on 1,672 clips / 435k frames
+of badminton+tennis+table-tennis: **5 racket keypoints** (top, bottom, handle,
+left, right) via a two-stage detect→RTMPose-M pipeline, with **pretrained
+checkpoints** (`download_checkpoints.py`) and badminton configs. Dataset on
+HuggingFace `linfeng302/RacketVision`. Plan: run their pretrained RacketPose on
+our frames **on Colab** (no GPU here), export keypoints per frame, and use them
+instead of the box in Step C — 5 keypoints give real racket *orientation and
+roll*, not just position. Only fine-tune if their zero-shot transfer to our
+void-deck footage is poor.
 
 ## Track B — persistent twin driver (agreed 2026-07-17)
 
