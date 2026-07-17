@@ -2255,7 +2255,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 41d97ccffbcd9a341a63f7ed700befb1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  streamingAssetsPath: skeleton/test_3.json
+  streamingAssetsPath: skeleton/20260715_clears_sideview.json
   playOnStart: 1
   loop: 1
   speed: 1
@@ -2324,18 +2324,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 1918847836}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4580d832820a3b145b60385acc312ee2, type: 3}
+  m_Script: {fileID: 11500000, guid: 814927c2453b2d545b31001641803081, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  clipsWithRacket:
-  - test_3
-  - test_4
-  - test_5
-  hand: 0
-  color: {r: 1, g: 0.45, b: 0.05, a: 1}
-  shaftLength: 0.4
-  headLength: 0.28
-  headWidth: 0.22
+  driveEnabled: 1
+  toggleKey: 116
+  lookaheadSeconds: 0.2
+  rootHalflife: 0.12
+  jointHalflife: 0.06
+  footLock: 1
+  lockBelowSpeed: 0.35
+  lockBelowHeight: 0.18
+  unlockDistance: 0.22
   confidenceCutoff: 0.3
 --- !u!1 &2136621516
 GameObject:

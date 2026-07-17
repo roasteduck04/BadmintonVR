@@ -84,3 +84,6 @@ docs/img/
 # Third-party avatar model (unclear redistribution license) — supply your own
 Assets/Avatar/character.fbx
 Assets/Avatar/character.fbx.meta
+
+# Model weights (auto-downloaded by tools/detect_racket.py)
+*.pt
