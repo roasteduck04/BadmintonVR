@@ -222,5 +222,70 @@ def label_segments(doc, segments, speed, fps, hand="right"):
     return segments
 
 
+def build_moves(doc, hand="right", min_peak_speed=3.0, conf_cutoff=0.3):
+    fps = fps_of(doc)
+    speed = wrist_speed(doc, hand, conf_cutoff)
+    peaks = detect_strokes(speed, fps, min_peak_speed)
+    segs = label_segments(doc, segment_clip(doc, speed, peaks, fps), speed, fps, hand)
+    for s in segs:                       # JSON-ready: plain ints/strs/floats
+        s["start"], s["end"] = int(s["start"]), int(s["end"])
+        if "peak" in s:
+            s["peak"] = int(s["peak"])
+    return segs
+
+
+def write_moves(path, moves):
+    doc = load_doc(path)
+    doc["schema_version"] = "1.1"
+    doc["moves"] = moves
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(doc, f, separators=(",", ":"))
+
+
+def print_report(doc, moves, speed, fps, hand):
+    print(f"clip {doc.get('video_id')}  fps {fps:.1f}  frames {len(doc['frames'])}")
+    print(f"thresholds: drop<{TH_DROP_SPEED} m/s  smash vy<{TH_SMASH_VY}  "
+          f"net z<={TH_NET_Z} & <{TH_NET_SPEED} m/s  lift vy>{TH_LIFT_VY}")
+    for m in moves:
+        t0, t1 = m["start"] / fps, m["end"] / fps
+        line = f"  {t0:7.2f}-{t1:7.2f}s  {m['label']:<15}"
+        if "peak" in m:
+            seg = dict(m); seg["label"] = "stroke"
+            feats = stroke_features(doc, seg, speed, fps, hand)
+            line += (f" conf {m.get('confidence', 0):.2f}  peak {feats['peak_speed']:.1f} m/s"
+                     f"  vy {feats['post_vy']:+.1f}  root_z {feats['root_z']:.1f}"
+                     f"  {'overhead' if feats['wrist_above_nose'] else 'low'}")
+        print(line)
+    strokes = [m for m in moves if "peak" in m]
+    print(f"{len(strokes)} strokes / {len(moves)} segments")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Label badminton moves in a skeleton.json")
+    ap.add_argument("skeleton", help="e.g. data/skeleton/test_3.json")
+    ap.add_argument("--hand", choices=("right", "left"), default="right")
+    ap.add_argument("--min-peak-speed", type=float, default=3.0)
+    ap.add_argument("--report", action="store_true", help="print the timeline (default)")
+    ap.add_argument("--write", action="store_true",
+                    help="write moves into the json AND the StreamingAssets copy")
+    args = ap.parse_args()
+
+    doc = load_doc(args.skeleton)
+    fps = fps_of(doc)
+    speed = wrist_speed(doc, args.hand)
+    moves = build_moves(doc, args.hand, args.min_peak_speed)
+    print_report(doc, moves, speed, fps, args.hand)
+
+    if args.write:
+        write_moves(args.skeleton, moves)
+        stem = os.path.splitext(os.path.basename(args.skeleton))[0]
+        ua = os.path.join("Assets", "StreamingAssets", "skeleton", stem + ".json")
+        if os.path.exists(ua):
+            write_moves(ua, moves)
+            print(f"wrote moves -> {args.skeleton} and {ua}")
+        else:
+            print(f"wrote moves -> {args.skeleton} (no StreamingAssets copy found)")
+
+
 if __name__ == "__main__":
-    raise SystemExit("CLI arrives in a later task; import the functions for now.")
+    main()

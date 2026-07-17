@@ -218,3 +218,31 @@ def test_label_segments_replaces_all_strokes():
     assert stroke["label"] in ("overhead_smash", "overhead_clear", "drop",
                                "underarm_lift", "net_shot", "drive")
     assert 0.0 < stroke["confidence"] <= 0.9
+
+
+# ---------------------------------------------------------------- Task 4
+
+import json, tempfile
+from label_moves import build_moves, write_moves
+
+
+def test_build_moves_end_to_end():
+    doc = make_stroke_doc(2.0, post_vy=-3.0, peak_speed=7.0)
+    moves = build_moves(doc)
+    assert_tiles(moves, 400)
+    assert any(m["label"] == "overhead_smash" for m in moves)
+
+
+def test_write_moves_bumps_schema_and_is_idempotent():
+    doc = make_stroke_doc(2.0, post_vy=-3.0, peak_speed=7.0)
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "clip.json")
+        with open(p, "w") as f:
+            json.dump(doc, f)
+        moves = build_moves(doc)
+        write_moves(p, moves)
+        write_moves(p, moves)                     # idempotent
+        out = json.load(open(p))
+        assert out["schema_version"] == "1.1"
+        assert out["moves"] == moves
+        assert out["video_id"] == "synth"         # nothing else lost
