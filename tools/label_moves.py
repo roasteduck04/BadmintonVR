@@ -34,6 +34,14 @@ L_HIP, R_HIP = 23, 24
 STROKE_LABELS = ("overhead_smash", "overhead_clear", "drop",
                  "underarm_lift", "net_shot", "drive")
 
+# --- classification thresholds (printed by --report) ---
+TH_DROP_SPEED = 4.5      # overhead below this = drop
+TH_SMASH_VY = -1.5       # overhead + post-peak wrist vy below this = smash
+TH_NET_Z = 2.0           # root z at/under this = net region (net z=0)
+TH_NET_SPEED = 5.0       # net region + peak below this = net_shot
+TH_LIFT_VY = 1.0         # upward follow-through above this = lift
+POST_WINDOW_S = 0.15     # follow-through window after the peak
+
 
 def load_doc(path):
     with open(path, encoding="utf-8") as f:
@@ -160,6 +168,57 @@ def segment_clip(doc, speed, peaks, fps, moving_speed=0.8,
         segments.append({"start": lo, "end": hi, "peak": int(p), "label": "stroke"})
         cursor = hi + 1
     fill_gap(cursor, n - 1, segments)
+    return segments
+
+
+def stroke_features(doc, seg, speed, fps, hand="right"):
+    wrist = R_WRIST if hand == "right" else L_WRIST
+    p = seg["peak"]
+    wy = joint_xyz(doc, p, wrist)[1]
+    nose_y = joint_xyz(doc, p, NOSE)[1]
+    hip_y = (joint_xyz(doc, p, L_HIP)[1] + joint_xyz(doc, p, R_HIP)[1]) / 2
+    k = max(1, int(POST_WINDOW_S * fps))
+    hi = min(len(doc["frames"]) - 1, p + k)
+    post_vy = ((joint_xyz(doc, hi, wrist)[1] - wy) * fps / (hi - p)) if hi > p else 0.0
+    r = doc["frames"][p].get("root_court_xz")
+    root_z = abs(r[1]) if r and len(r) == 2 else 99.0   # 99 = unknown, never "near net"
+    return {"peak_speed": float(np.nanmax(speed[seg["start"]:seg["end"] + 1])),
+            "wrist_above_nose": bool(wy > nose_y),
+            "wrist_below_hip": bool(wy < hip_y),
+            "post_vy": float(post_vy), "root_z": float(root_z)}
+
+
+def _confidence(margin_frac, second_agrees):
+    conf = 0.5
+    if margin_frac >= 0.5:
+        conf += 0.2
+    if second_agrees:
+        conf += 0.1
+    return min(conf, 0.9)
+
+
+def classify_stroke(doc, seg, speed, fps, hand="right"):
+    f = stroke_features(doc, seg, speed, fps, hand)
+    ps, vy = f["peak_speed"], f["post_vy"]
+    if f["wrist_above_nose"]:
+        if ps < TH_DROP_SPEED:
+            return "drop", _confidence((TH_DROP_SPEED - ps) / TH_DROP_SPEED, vy > TH_SMASH_VY), f
+        if vy < TH_SMASH_VY:
+            return "overhead_smash", _confidence((TH_SMASH_VY - vy) / abs(TH_SMASH_VY), ps > 6.0), f
+        return "overhead_clear", _confidence((vy - TH_SMASH_VY) / abs(TH_SMASH_VY), ps >= TH_DROP_SPEED), f
+    if f["root_z"] <= TH_NET_Z and ps < TH_NET_SPEED:
+        return "net_shot", _confidence((TH_NET_Z - f["root_z"]) / TH_NET_Z, ps < TH_DROP_SPEED), f
+    if f["wrist_below_hip"] or vy > TH_LIFT_VY:
+        return "underarm_lift", _confidence(max(vy - TH_LIFT_VY, 0.0) / TH_LIFT_VY,
+                                            f["wrist_below_hip"]), f
+    return "drive", _confidence(0.0, not f["wrist_above_nose"]), f
+
+
+def label_segments(doc, segments, speed, fps, hand="right"):
+    for s in segments:
+        if s["label"] == "stroke":
+            label, conf, _ = classify_stroke(doc, s, speed, fps, hand)
+            s["label"], s["confidence"] = label, round(conf, 2)
     return segments
 
 
