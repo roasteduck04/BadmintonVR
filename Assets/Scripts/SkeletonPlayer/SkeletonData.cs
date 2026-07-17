@@ -21,6 +21,16 @@ namespace BadmintonVR.SkeletonPlayer
     }
 
     [Serializable]
+    public class MoveSegment
+    {
+        public int start;
+        public int peak;        // 0 when absent (moving/idle) — JsonUtility default
+        public int end;
+        public string label;    // may be a label Unity doesn't know — display raw
+        public float confidence;
+    }
+
+    [Serializable]
     public class SkeletonDoc
     {
         public string schema_version;
@@ -29,6 +39,7 @@ namespace BadmintonVR.SkeletonPlayer
         public string coordinate_system;
         public string[] joint_names;
         public SkeletonFrame[] frames;
+        public MoveSegment[] moves;   // optional (schema 1.1) — null on old files
 
         public const int NumJoints = 33;
         public const int Stride = 4; // x, y, z, confidence
@@ -58,6 +69,26 @@ namespace BadmintonVR.SkeletonPlayer
         }
 
         public float RootConf(int frame) => frames[frame].root_confidence;
+
+        /// <summary>True if this clip carries move labels (schema 1.1 `moves`).</summary>
+        public bool HasMoves => moves != null && moves.Length > 0;
+
+        /// <summary>Segment containing this frame, or null. Segments tile the
+        /// clip and are sorted, so binary search.</summary>
+        public MoveSegment MoveAt(int frame)
+        {
+            if (!HasMoves) return null;
+            int lo = 0, hi = moves.Length - 1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                var m = moves[mid];
+                if (frame < m.start) hi = mid - 1;
+                else if (frame > m.end) lo = mid + 1;
+                else return m;
+            }
+            return null;
+        }
 
         /// <summary>Lowest joint Y across the whole clip — used to stand the twin on the floor.</summary>
         public float MinY()
