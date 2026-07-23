@@ -181,3 +181,16 @@ Useful flags:
 
 Phase 1 is pose only — no court homography / root translation (that's Phase 2).
 The twin plays in place at court center.
+
+## Monocular SMPL skeleton (skeleton.json v2)
+
+`smpl_to_skeleton.py` — convert WHAM SMPL output (from `colab/wham_extract.ipynb`)
+into `skeleton.json v2` (SMPL-24 tree with a real spine). GPU-free.
+- Demo: `python tools/smpl_to_skeleton.py --synthetic --out data/skeleton/demo.skeleton.json`
+- Real: `python tools/smpl_to_skeleton.py --wham-output test_N.wham.npz --video-id test_N --out data/skeleton/test_N.skeleton.json`
+
+`eval_pose.py` — accuracy vs SMPL ground truth (EMDB/3DPW):
+`python tools/eval_pose.py --pred data/skeleton/test_N.skeleton.json --gt gt.npz --per-joint`
+
+Unity: add `SmplSkeletonDriver` to a scene-root object; point `skeletonFile` at a
+v2 file under `StreamingAssets/skeleton/`.

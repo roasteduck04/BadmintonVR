@@ -725,3 +725,14 @@ muscle/injury. Validation = MultiSenseBadminton (public) → prof's 16 sensors l
 →`docs/for-claude/research-notes/` (badminton_camera_research.md→camera-research.md);
 explainer/roadmap/etc PDFs→`docs/for-me/guides/`; ARCHITECTURE/ROADMAP-BOARD/TIMELINE
 →`docs/for-me/`. `docs/superpowers/` unchanged (skill convention). `docs/img/` unchanged.
+
+## 2026-07-23 — Monocular SMPL skeleton (skeleton.json v2)
+
+Built the SMPL-24 pose path (spec: `docs/superpowers/specs/2026-07-23-monocular-smpl-skeleton-design.md`,
+plan: `docs/superpowers/plans/2026-07-23-monocular-smpl-skeleton.md`).
+- `tools/smpl_to_skeleton.py` — WHAM SMPL → `skeleton.json v2` (SMPL-24 + spine, `parents`, `betas`, `smpl` block). GPU-free; `--synthetic` demo generator. Tests in `tools/tests/`.
+- `tools/eval_pose.py` — MPJPE / PA-MPJPE vs SMPL GT (EMDB/3DPW).
+- `tools/colab/wham_extract.ipynb` — WHAM on Colab → normalized `.npz`.
+- `Assets/Scripts/SkeletonPlayer/SmplSkeletonData.cs` + `SmplSkeletonDriver.cs` — procedural 24-joint twin with the spine chain; reads v2 from StreamingAssets.
+- Schema v2 is producer-agnostic → multi-view triangulation can write the same file later.
+Run tests: `./tools/.venv/Scripts/python.exe -m pytest tools/tests -v`.
