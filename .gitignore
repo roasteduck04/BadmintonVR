@@ -90,3 +90,5 @@ Assets/Avatar/character.fbx.meta
 
 # Move-label debug overlays (frame-bearing video)
 data/moves/
+
+.superpowers/
