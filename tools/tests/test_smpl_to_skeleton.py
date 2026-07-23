@@ -1,3 +1,7 @@
+import json
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 
@@ -81,3 +85,39 @@ def test_make_synthetic_is_wellformed_and_travels():
     x0 = doc["frames"][0]["joints_flat"][0]
     x9 = doc["frames"][9]["joints_flat"][0]
     assert x9 > x0
+
+
+def test_load_wham_output_normalizes_npz(tmp_path):
+    npz = tmp_path / "clip.wham.npz"
+    T = 4
+    np.savez(npz,
+             joints3d=np.random.RandomState(0).rand(T, 24, 3),
+             pose=np.random.RandomState(1).rand(T, 72),
+             betas=np.random.RandomState(2).rand(10),
+             transl=np.random.RandomState(3).rand(T, 3),
+             fps=np.array(30.0))
+    data = s2s.load_wham_output(str(npz))
+    assert data["joints3d"].shape == (T, 24, 3)
+    assert data["pose"].shape == (T, 72)
+    assert data["betas"].shape == (10,)
+    assert data["transl"].shape == (T, 3)
+    assert float(data["fps"]) == 30.0
+
+
+def test_load_wham_output_requires_joints(tmp_path):
+    npz = tmp_path / "bad.wham.npz"
+    np.savez(npz, pose=np.zeros((3, 72)))
+    with pytest.raises((KeyError, ValueError)):
+        s2s.load_wham_output(str(npz))
+
+
+def test_cli_synthetic_writes_valid_v2(tmp_path):
+    out = tmp_path / "demo.skeleton.json"
+    subprocess.run(
+        [sys.executable, "tools/smpl_to_skeleton.py", "--synthetic",
+         "--frames", "6", "--out", str(out)],
+        check=True, cwd=".")
+    doc = json.loads(out.read_text())
+    assert doc["schema_version"] == "2.0"
+    assert len(doc["frames"]) == 6
+    assert len(doc["joint_names"]) == 24

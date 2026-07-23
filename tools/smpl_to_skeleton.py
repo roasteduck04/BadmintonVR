@@ -136,3 +136,49 @@ def write_skeleton_json(doc, out_path):
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh)
+
+
+def load_wham_output(path):
+    """Load the normalized .npz written by tools/colab/wham_extract.ipynb.
+
+    Required key: joints3d (T,24,3). Optional: pose (T,72), betas (10,),
+    transl (T,3), fps (scalar).
+    """
+    with np.load(path, allow_pickle=False) as z:
+        if "joints3d" not in z:
+            raise KeyError("wham .npz is missing required key 'joints3d'")
+        joints3d = np.asarray(z["joints3d"], dtype=np.float64)
+        if joints3d.ndim != 3 or joints3d.shape[1:] != (NUM_SMPL_JOINTS, 3):
+            raise ValueError(f"joints3d must be (T,24,3), got {joints3d.shape}")
+        return {
+            "joints3d": joints3d,
+            "pose": np.asarray(z["pose"], dtype=np.float64) if "pose" in z else None,
+            "betas": np.asarray(z["betas"], dtype=np.float64) if "betas" in z else None,
+            "transl": np.asarray(z["transl"], dtype=np.float64) if "transl" in z else None,
+            "fps": float(z["fps"]) if "fps" in z else 30.0,
+        }
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Build skeleton.json v2 from WHAM SMPL output.")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--wham-output", help="normalized .npz from wham_extract.ipynb")
+    src.add_argument("--synthetic", action="store_true", help="emit a GPU-free demo clip")
+    ap.add_argument("--video-id", default="demo")
+    ap.add_argument("--fps", type=float, default=None)
+    ap.add_argument("--frames", type=int, default=12, help="synthetic only")
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args(argv)
+
+    if args.synthetic:
+        doc = make_synthetic(video_id=args.video_id, fps=args.fps or 30.0, frames=args.frames)
+    else:
+        d = load_wham_output(args.wham_output)
+        doc = build_v2_document(args.video_id, d["joints3d"], fps=args.fps or d["fps"],
+                                pose=d["pose"], betas=d["betas"], transl=d["transl"])
+    write_skeleton_json(doc, args.out)
+    print(f"wrote {args.out}: {len(doc['frames'])} frames, {len(doc['joint_names'])} joints")
+
+
+if __name__ == "__main__":
+    main()
