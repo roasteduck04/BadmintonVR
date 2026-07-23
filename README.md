@@ -81,7 +81,7 @@ tools/.venv/Scripts/python tools/check_position.py data/raw/test_5.mp4
 | 1. Pose-only twin | ✅ | clip → stick figure in Unity, plays in place |
 | 2. Single-phone court position | ✅ | homography → twin walks the court (moving camera supported) |
 | 2.5 Racket | 🔨 | arm-estimated racket now; detector (YOLO / RacketVision-style keypoints) next |
-| AI smoothing | 📝 | confidence-weighted filtering → Kalman → temporal lifting ([plan](docs/ai-smoothing-plan.md)) |
+| AI smoothing | 📝 | confidence-weighted filtering → Kalman → temporal lifting ([plan](docs/for-claude/ai-smoothing-plan.md)) |
 | 3. Two-camera capture | 🔜 | OpenCap-style triangulation for true 3D (plan not concrete yet) |
 | 4. Badminton-specific pose model | 🔜 | fine-tune on Colab, export ONNX |
 | 5. Near-live | 🔜 | inference server → in-Unity ONNX (Sentis) |

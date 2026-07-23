@@ -35,7 +35,7 @@ public static class CourtBuilder
     const float LINE_Y = 0.011f;         // lines sit just above the floor surface (top at y=0)
 
     // The tracked half is the +Z half (net z=0 -> baseline z=6.70). See
-    // court_geometry.json / docs/PROGRESS.md 2026-07-14.
+    // court_geometry.json / docs/for-claude/PROGRESS.md 2026-07-14.
     public enum Scope { Full, TrackedHalf }
 
     [MenuItem("Tools/Badminton/Build Court")]

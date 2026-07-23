@@ -10,7 +10,7 @@ namespace BadmintonVR.SkeletonPlayer
     /// forearm. Falls back to the elbow -> wrist line when the hand landmarks
     /// are low-confidence. No detection yet — this is the visual baseline the
     /// future racket detector gets compared against
-    /// (see docs/ai-smoothing-plan.md and the roadmap).
+    /// (see docs/for-claude/ai-smoothing-plan.md and the roadmap).
     ///
     /// Distinct color (orange by default) so it can't be confused with the
     /// yellow joints / blue bones of the skeleton. Only shown for clips listed

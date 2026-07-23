@@ -6,7 +6,7 @@ using UnityEngine.InputSystem;
 namespace BadmintonVR.SkeletonPlayer
 {
     /// <summary>
-    /// Track B: the PERSISTENT twin driver (docs/ai-smoothing-plan.md).
+    /// Track B: the PERSISTENT twin driver (docs/for-claude/ai-smoothing-plan.md).
     ///
     /// Instead of teleporting the twin to raw MediaPipe data every frame, ONE
     /// body is kept alive and each capture frame becomes a TARGET it moves

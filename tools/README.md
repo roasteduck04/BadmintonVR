@@ -43,7 +43,7 @@ service line and singles/doubles alleys — there is no net-to-SSL strip and
 no other half). In court coordinates that half is the +Z side: net z=0,
 SSL z=1.98, LSL z=5.94, baseline z=6.70.
 
-**How to shoot for good position accuracy** (see docs/PROGRESS.md 2026-07-14
+**How to shoot for good position accuracy** (see docs/for-claude/PROGRESS.md 2026-07-14
 for why): phone at the NET position facing the half, centered on the center
 line, and as HIGH as possible (2.5 m+ — height is the #1 accuracy lever);
 1.0x lens (NOT 0.6x — the ultrawide's barrel distortion bends the court

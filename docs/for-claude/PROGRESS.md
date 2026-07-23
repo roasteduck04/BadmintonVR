@@ -236,7 +236,7 @@ walked to. Forensics (no user clicks needed — the walk itself is ground truth)
 Evidence: `data/calib/position_front_recalib_guide.png` (side-by-side stance
 frames, wrong clicks in red, true point circled green) and
 `data/calib/position_front_rectified.png` (top-down warp vs expected grid).
-(Both also archived under `docs/img/` for the personal journal `docs/DOCUMENTARY.md`.)
+(Both also archived under `docs/img/` for the personal journal `docs/for-me/DOCUMENTARY.md`.)
 
 **Phase renumber:** because calibration turned out to be its own load-bearing
 problem, Phase 2 is now split (see `CLAUDE.md`) — **2.1 = corner tracking &
@@ -554,7 +554,7 @@ gate, court-ROI masking against bystanders.
   overlays + check images, skeleton json incl. internal `video_id`/`video`
   fields, StreamingAssets + .meta, code defaults). All clips now follow the
   `test_N` convention. Stale WRONG-fullcourt backups → `data/calib/archive/`.
-- Research .md notes moved from the outer folder into `docs/research/`.
+- Research .md notes moved from the outer folder into `docs/for-claude/research-notes/`.
 - **Video Compare fixed** (was invisible + MissingReferenceException):
   `SkeletonRenderer.Clear()` destroys all twin children on clip load, and the
   overlay canvas was parented under the twin. Canvas now lives at the scene
@@ -570,14 +570,14 @@ gate, court-ROI masking against bystanders.
 - **Go-public prep**: README.md + MIT LICENSE added; `.gitignore` now excludes
   every frame-bearing image (`data/**/*.png`, `data/**/*.jpg`, `docs/img/`,
   `data/calib/archive/`) — code/JSON/docs only in the public repo.
-- **AI roadmap** written to `docs/ai-smoothing-plan.md`: measure → One-Euro +
+- **AI roadmap** written to `docs/for-claude/ai-smoothing-plan.md`: measure → One-Euro +
   gap fill → Kalman + physics gating → temporal 3D lifting (Colab) → better
   backbone; racket detection path (zero-shot COCO → Roboflow/auto-label
   fine-tune → fuse with arm prior).
 
 ## 2026-07-17 — Track B: persistent twin driver (springs + IK + foot lock + lookahead)
 
-Architecture shift (plan: `docs/ai-smoothing-plan.md` Track B): the twin is no
+Architecture shift (plan: `docs/for-claude/ai-smoothing-plan.md` Track B): the twin is no
 longer teleported to raw MediaPipe data each frame — one persistent body moves
 TOWARD each capture target.
 
@@ -624,7 +624,7 @@ standard: 0 errors).
 
 Boxes verified by eye on the overlays: on the real racket, including a raised
 mid-swing racket at 0.86 conf. Two caveats recorded in
-`docs/ai-smoothing-plan.md`: duplicate boxes on the same racket (~half of
+`docs/for-claude/ai-smoothing-plan.md`: duplicate boxes on the same racket (~half of
 hits — keep the best box nearest the wrist), and test_4's misses cluster on
 the fast/blurred swing frames we care about most. **No own-data gathering or
 fine-tune needed to start.** Outputs in `data/racket/` — detection JSON is
@@ -638,7 +638,7 @@ licence): 1,672 clips / 435k frames of badminton+tennis+table-tennis with
 badminton configs, dataset on HF `linfeng302/RacketVision`. Queued as racket
 Step D (Colab) — real racket orientation + roll, not just a box.
 
-**`docs/muscle-analysis-plan.md` (NEW, plan only)** — un-parks the injury
+**`docs/for-claude/muscle-analysis-plan.md` (NEW, plan only)** — un-parks the injury
 thread narrowly: kinematics + stroke segmentation → rule-based muscle
 involvement highlight on the avatar → OpenSim inverse dynamics (Colab) → EMG
 validation against MultiSenseBadminton (GIST/MIT, *Scientific Data* 2024:
@@ -679,3 +679,49 @@ Approach A landed end-to-end, TDD (19 pytest tests, `tools/tests/`):
   wrist (phantom 60 m/s spikes) — fixed to hold position; gentle-stroke
   tests use 3.8 m/s because 5-frame smoothing pulls 3.5 under the 3.0
   detection threshold. `data/moves/` added to .gitignore (was NOT covered).
+
+## 2026-07-18 — Racket Step D prep: RacketVision run recipe (runner NOT built — user deferred)
+
+User call: don't build the Colab runner yet; record the recipe so building it
+is a one-session job later. From the [RacketVision repo](https://github.com/OrcustD/RacketVision)
+README (verified 2026-07-18):
+
+- **Environment** (pin-sensitive — expect the usual mm-stack friction on
+  Colab): Python 3.10, torch 2.1.2 + cu121, `openmim`; then
+  `mmcv >=2.0.0rc4,<2.2.0`, `mmdet >=3.0.0,<3.3.0`,
+  `mmpose >=1.1.0 --no-deps`, `numpy >=1.23,<2`,
+  `opencv-python <=4.10.0.84`, plus
+  `albumentations json_tricks munkres xtcocotools pandas tqdm scikit-learn parse`.
+- **Checkpoints**: from `source/`: `python download_checkpoints.py --module
+  RacketPose` → weights land in `source/RacketPose/checkpoints/`.
+- **Inference**: from `source/RacketPose/`: `python tools/inference.py
+  --sport badminton --split test --device cuda`. Two-stage: RTMDet-M racket
+  boxes → RTMPose-M **5 keypoints** (top/bottom/handle/left/right).
+- **Input layout**: extracted JPG frames in their dataset structure
+  (`source/data/badminton/<match>/<rally>/`, see
+  `source/DataPreprocess/extract_frames.py`). **Output**:
+  `source/data/badminton/pred_racket/<match>/<rally>/result.json`.
+- **Adaptation the runner will need**: our clip → fake `<match>/<rally>`
+  frame dir → their inference → convert `result.json` →
+  `data/racket/<clip>_rvision.json` (per-frame 5 keypoints in pixels +
+  conf, same folder convention as the zero-shot probe). Clips reach Colab
+  via Drive — never through the public repo (privacy rule). When this
+  lands, Step C fusion consumes these keypoints instead of the COCO box
+  (real orientation + roll, per `docs/for-claude/ai-smoothing-plan.md` Step D).
+
+## 2026-07-23 — Team re-plan (December milestone) + docs reorg
+
+Project reframed into a **team deliverable** (collaborators), early-Dec-2026
+milestone. Forward plan now lives in `docs/for-me/DECEMBER-PLAN.md` (this session).
+Delivered: research brief (`docs/for-me/RESEARCH-BRIEF.pdf`), reframed roadmap board
++ weekly timeline (`docs/for-me/ROADMAP-BOARD.html`, `docs/for-me/TIMELINE-DEC.html`),
+`docs/for-me/TODO.md`. **Pose-engine pivot to OpenCap** (biomech-grade video→OpenSim
+kinematics); wenzhen owns skeleton + twin + accuracy, the AI lane the team AI, the biomechanics lane
+muscle/injury. Validation = MultiSenseBadminton (public) → prof's 16 sensors later.
+
+**docs/ reorganized by audience** (remap for older entries above):
+`docs/PROGRESS.md`→`docs/for-claude/PROGRESS.md`; `docs/DOCUMENTARY.md`→`docs/for-me/`;
+`docs/{ai-smoothing,muscle-analysis}-plan.md`→`docs/for-claude/`; `docs/research/*.md`
+→`docs/for-claude/research-notes/` (badminton_camera_research.md→camera-research.md);
+explainer/roadmap/etc PDFs→`docs/for-me/guides/`; ARCHITECTURE/ROADMAP-BOARD/TIMELINE
+→`docs/for-me/`. `docs/superpowers/` unchanged (skill convention). `docs/img/` unchanged.

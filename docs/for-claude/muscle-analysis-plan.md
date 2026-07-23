@@ -25,7 +25,7 @@ without claiming anything medical.
 
 ## Prerequisites (must land first)
 
-- **Pose quality**: Steps 1–3 of `docs/ai-smoothing-plan.md`. Joint *angles*
+- **Pose quality**: Steps 1–3 of `docs/for-claude/ai-smoothing-plan.md`. Joint *angles*
   are far more sensitive to jitter than joint *positions* — a 2 cm elbow
   wobble is invisible on screen but swings the elbow angle several degrees,
   and moments differentiate that noise twice. Temporal lifting (Step 3) is
