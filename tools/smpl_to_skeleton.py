@@ -56,7 +56,9 @@ def apply_transform(xyz, transform=WORLD_TO_UNITY):
 
 def build_v2_document(video_id, joints3d, fps, *, pose=None, betas=None,
                       transl=None, confidences=None, resolution=None, rotate=0,
-                      extractor_pose="wham", transform=WORLD_TO_UNITY):
+                      extractor_pose="wham", source_type="monocular_rgb",
+                      notes="world-grounded SMPL, converted to Unity frame",
+                      transform=WORLD_TO_UNITY):
     """Assemble a skeleton.json v2 dict from SMPL joints (+ optional params).
 
     joints3d: (T,24,3) SMPL joints in WHAM world frame, meters.
@@ -109,11 +111,11 @@ def build_v2_document(video_id, joints3d, fps, *, pose=None, betas=None,
     return {
         "schema_version": SCHEMA_VERSION,
         "video_id": video_id,
-        "source": {"type": "monocular_rgb", "fps": round(float(fps), 3),
+        "source": {"type": source_type, "fps": round(float(fps), 3),
                    "resolution": list(resolution) if resolution else None,
                    "rotate": rotate},
         "extractor": {"pose": extractor_pose,
-                      "notes": "world-grounded SMPL, converted to Unity frame"},
+                      "notes": notes},
         "coordinate_system": "unity",
         "skeleton": "smpl-24",
         "joint_names": list(SMPL_JOINT_NAMES),
@@ -129,7 +131,7 @@ def make_synthetic(video_id="demo", fps=30.0, frames=12):
     joints = np.empty((frames, NUM_SMPL_JOINTS, 3))
     for t in range(frames):
         joints[t] = _REST + np.array([0.1 * t, 0.0, 0.0])
-    return build_v2_document(video_id, joints, fps=fps, extractor_pose="synthetic")
+    return build_v2_document(video_id, joints, fps=fps, extractor_pose="synthetic", source_type="synthetic")
 
 
 def write_skeleton_json(doc, out_path):

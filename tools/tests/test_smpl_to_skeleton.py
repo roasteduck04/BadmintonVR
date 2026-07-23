@@ -121,3 +121,37 @@ def test_cli_synthetic_writes_valid_v2(tmp_path):
     assert doc["schema_version"] == "2.0"
     assert len(doc["frames"]) == 6
     assert len(doc["joint_names"]) == 24
+
+
+def test_make_synthetic_labels_source_synthetic():
+    doc = s2s.make_synthetic(frames=3)
+    assert doc["source"]["type"] == "synthetic"
+
+
+def test_build_v2_document_source_type_override():
+    joints = np.zeros((1, 24, 3))
+    doc = s2s.build_v2_document("c", joints, fps=30.0, source_type="multiview_rgb", notes="pose2sim")
+    assert doc["source"]["type"] == "multiview_rgb"
+    assert doc["extractor"]["notes"] == "pose2sim"
+
+
+def test_cli_wham_output_roundtrip(tmp_path):
+    npz = tmp_path / "clip.wham.npz"
+    T = 4
+    np.savez(npz,
+             joints3d=np.random.RandomState(0).rand(T, 24, 3),
+             pose=np.random.RandomState(1).rand(T, 72),
+             betas=np.random.RandomState(2).rand(10),
+             transl=np.random.RandomState(3).rand(T, 3),
+             fps=np.array(50.0))
+    out = tmp_path / "wtest.skeleton.json"
+    s2s.main(["--wham-output", str(npz), "--video-id", "wtest", "--out", str(out)])
+    doc = json.loads(out.read_text())
+    assert doc["schema_version"] == "2.0"
+    assert doc["video_id"] == "wtest"
+    assert len(doc["frames"]) == T
+    assert doc["source"]["type"] == "monocular_rgb"       # WHAM path keeps the monocular default
+    assert doc["source"]["fps"] == 50.0                    # fps came from the npz
+    assert len(doc["betas"]) == 10
+    smpl = doc["frames"][0]["smpl"]
+    assert len(smpl["body_pose"]) == 69 and len(smpl["global_orient"]) == 3
