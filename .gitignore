@@ -88,6 +88,11 @@ Assets/Avatar/character.fbx.meta
 # Model weights (auto-downloaded by tools/detect_racket.py)
 *.pt
 
+# License-gated SMPL body models + large staging (register at smpl.is.tue.mpg.de).
+# NEVER commit — the repo is public and these carry the SMPL Model License.
+models/
+downloads/
+
 # Move-label debug overlays (frame-bearing video)
 data/moves/
 
