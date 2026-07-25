@@ -736,3 +736,693 @@ plan: `docs/superpowers/plans/2026-07-23-monocular-smpl-skeleton.md`).
 - `Assets/Scripts/SkeletonPlayer/SmplSkeletonData.cs` + `SmplSkeletonDriver.cs` — procedural 24-joint twin with the spine chain; reads v2 from StreamingAssets.
 - Schema v2 is producer-agnostic → multi-view triangulation can write the same file later.
 Run tests: `./tools/.venv/Scripts/python.exe -m pytest tools/tests -v`.
+
+## 2026-07-24 — SMPL models staged; pose-engine pivot WHAM→ROMP; Route A (Blender mesh)
+
+- **SMPL models organized** (gitignored — license-gated, public repo): `models/smpl/`
+  holds `SMPL_NEUTRAL.pkl` (+ MALE/FEMALE), renamed to the `smplx` convention;
+  reference/archives in `models/smpl-reference/`. `.gitignore` now ignores `models/` +
+  `downloads/`. Test clip = `data/raw/test_6.mp4` (Pexels person, general pose — not badminton).
+- **Architecture pivot (Route A):** Blender authors the model, Unity views it. Video →
+  SMPL params → **SMPL Blender add-on animates a body mesh** → **FBX** → Unity court.
+  This replaces the procedural Unity stick-skeleton (`SmplSkeletonDriver`) with a real mesh;
+  keeps `eval_pose`. Blender↔Unity link = FBX/glTF asset pipeline (auto-reimport).
+- **Pose engine WHAM → ROMP.** WHAM's repo has no `install.sh` and its real Colab setup
+  (conda + compiled SLAM + checkpoint scripts) is unworkable there. Switched
+  `tools/colab/wham_extract.ipynb` to **ROMP** (`simple_romp`, pip): same SMPL-param npz
+  contract (`joints3d`/`pose`/`betas`/`transl`/`fps`), so `smpl_to_skeleton.py` + Blender
+  + eval are unchanged. WHAM / 4D-Humans kept as later quality upgrades. Notebook downscales
+  4K→720p. **chumpy gotcha:** the official SMPL pkl is chumpy-pickled and chumpy is broken on
+  Colab Py3.12 — the notebook patches `np` aliases + `inspect.getargspec`, de-chumpifies to a
+  clean pkl (also downloaded for reuse), then converts. Notebook still named `wham_extract.ipynb`
+  (historical) — rename + commit pending a confirmed green run.
+
+## 2026-07-24 (cont.) — Route A PROVEN end-to-end + Blender comparison viewer
+
+**Pipeline works:** `test_6.mp4` → ROMP on Colab → `test_6.smpl.npz` (189 frames, 25 fps) →
+`smpl_to_skeleton.py` → `data/skeleton/test_6.skeleton.json` → Blender animated body →
+`models/smpl/test_6_twin.fbx` (Unity-ready) + `test_6_twin.blend`.
+
+- **Colab (ROMP):** the notebook now works; ROMP writes SMPL params (θ/betas/cam_trans) but NO
+  3D joints and saves a combined `out_romp/video_results.npz` keyed by frame — Cell 4 rewritten
+  to read that and **regress the 24 joints via `smplx`** from the de-chumpified clean pkl.
+- **Coordinate fix:** real data showed the twin **upside-down** — `WORLD_TO_UNITY` was flipping Z;
+  corrected to a **Y-flip `diag(1,-1,1)`** (ROMP is vision-camera Y-down → Unity Y-up; single flip
+  also fixes handedness). Verified upright (+1.38 m stature). Two tests updated; **36/36 pass**.
+- **Blender (Route A):** SMPL add-on (`smpl_blender_addon`) installs+enables on **Blender 5.2**;
+  `scene.smpl_add_gender` (male; no neutral, θ is gender-agnostic), betas → mesh `Shape000..009`,
+  24 bones Pelvis…R_Hand. **Pose convention solved:** body-pose joints applied directly; **pelvis =
+  `Rx(180°) @ quat(global_orient)`** (verified upright/natural frames 0/60/120/188). Baked 189
+  frames, exported via `bpy.ops.object.smpl_export_unity_fbx` (writes the FBX then throws a cosmetic
+  `skinned_mesh_original removed` error on 5.2 + renames objects `.001` — ignore).
+- **Comparison viewer BUILT in Blender** (platform switched Unity→Blender): `models/smpl/test_6_compare.blend`.
+  Two bodies side by side (raw | smooth), custom N-panel **"Twin Compare"** (persisted as text-block
+  `twin_compare.py`, re-run on reopen) with per-body toggles: Style raw⟷smooth (swaps Action) +
+  Skeleton + Mesh (= 3 modes × 2 styles). Smoothing = critically-damped **SmoothDamp spring (0.12 s) →
+  −85% angular jitter**, baked as `act_smooth`. Skeleton = armature `display_type='STICK'` +
+  `show_in_front` (bones are viewport-only — never in a camera render; verify with `render.opengl`).
+- **Artifacts gitignored** (`models/**`): `test_6.smpl.npz`, `SMPL_NEUTRAL_clean.pkl`, `test_6_twin.fbx`,
+  `test_6_twin.blend`, `test_6_compare.blend`.
+- **⚠ Uncommitted** on branch `feat/smpl-skeleton-v2` (local): the ROMP notebook, `WORLD_TO_UNITY`
+  fix + tests, and doc syncs (this file, README, design §10/§11, ARCHITECTURE). Deferred refactors to
+  fold into the batch commit: rename `wham_extract.ipynb`→`pose_extract.ipynb`, add `--smpl-npz` flag
+  alias to `smpl_to_skeleton.py`. Commit when asked.
+
+## 2026-07-24 (cont.) — Joint spheres + vision-racket (RacketVision) kickoff
+
+- **Fact correction:** `data/raw/test_6.mp4` is a **badminton** clip (female player on a red court,
+  **racket in right hand** pointing down at rest, **shuttlecock in left hand** + another on court, net;
+  4K 3840×2160 @25fps). Earlier notes calling it a generic person clip were wrong. So test_6 supports
+  vision-racket + shuttle work, not just body pose. (Verified by extracting a frame with ffmpeg.)
+- **Joint spheres DONE (renderable skeleton):** the stick armature is viewport-only (never renders), so
+  added **24 icospheres per body** in the compare scene — one per SMPL bone, positioned by a
+  `COPY_LOCATION` constraint (`head_tail=0` → posed bone head = joint), so they follow the animation AND
+  appear in a camera render. Collections `A_joints_left` (orange = raw) / `B_joints_right` (green = smooth),
+  hidden by default, wired to a new per-body **Joints** toggle (panel now Skeleton + Mesh + Joints).
+  Verified in a real render (spheres show; bones don't). Radius 0.032 m, icosphere subdiv 2, smooth-shaded.
+- **Viewer script is now a durable repo file** `tools/blender/twin_compare.py` (was trapped only in the
+  `.blend` text-block). Idempotent: run in Blender → rebuilds spheres + registers the panel. `.blend` saved.
+- **Vision racket — decided: full RacketVision pipeline (Colab, 5-keypoint).** RacketVision (AAAI'26, MIT):
+  two-stage RTMDet→RTMPose, **2D** keypoints `top`/`bottom`/`handle`/`left`/`right`, pretrained checkpoints
+  on HF `linfeng302/RacketVision-Models`. Per-keypoint acc (badminton): top 99.4 / bottom 99.7 / handle 97.3 /
+  left 74.6 / right 75.5 (sides occluded by hand) → the long axis is reliable, face-roll is noisy.
+- **Stage-1 notebook built:** `tools/colab/racketvision_extract.ipynb` (10 cells). Runs a standalone
+  top-down loop (their configs + checkpoints — NOT their match/rally/split dataset pipeline), self-discovers
+  config/ckpt paths, prints the real keypoint order, downscales test_6 4K→1080p, emits `test_6.racket2d.json`
+  + overlay video. OpenMMLab install (mmcv/mmdet/mmpose, py3.10/torch2.1.2 pins vs Colab) is the expected
+  iterate point. **Stage 2** (lift 2D→3D at SMPL hand → grip idx24/head idx25 → append skeleton.json) and
+  **Stage 3** (racket on the twin) come after we see real 2D output. detect_racket.py (COCO) left as the fallback.
+- **Not committed** (add to the pending batch): `tools/blender/twin_compare.py`,
+  `tools/colab/racketvision_extract.ipynb`, this entry, TODO update.
+- **Colab debug round 1 (notebook v2):** first run surfaced the real facts —
+  (a) **keypoint order confirmed** from repo `configs/_base_/datasets/racket_pose.py`:
+  `0=top, 1=bottom, 2=handle, 3=left, 4=right` (long axis = handle→top; sigmas show left/right are the
+  hard ones); (b) real inference configs are `RacketPose/configs/{detection/rtmdet_m_racket_infer.py,
+  pose/rtmpose_m_racket_infer.py}` (my glob wrongly grabbed `_base_/models/*`); (c) the RTMDet detector is
+  **3-class, badminton = label 0** (must filter, plus their bbox-area<0.5 guard) — from repo `tools/inference.py`,
+  which uses `init_detector`+`init_model`+`inference_topdown`; (d) checkpoints download fine via
+  `download_checkpoints.py --module RacketPose` (epoch_300.pth = det, best_PCK_epoch_90.pth = pose).
+  **Env is the pain:** Colab = Python 3.12 + torch 2.11 (no OpenMMLab wheels); `mim` breaks on 3.12
+  (stale setuptools → `pkgutil.ImpImporter`). v2 recipe: modern setuptools → **pin torch 2.3.1+cu121** →
+  mmcv 2.2.0 from the openmmlab torch2.3.0 wheel index → **mmdet 3.3.0 + mmpose 1.3.2 `--no-deps`** (+ only the
+  top-down runtime deps) so they don't fight over mmcv. GPU runtime required. detect_racket.py (COCO) is the fallback.
+- **Colab debug round 2 (notebook v3, 11 cells):** GPU T4 up, Cell 3/4 clean (configs OK, 189 frames = test_6 is
+  189f @25fps). New blocker: `mmdet`/`mmpose` **hard-assert `mmcv < 2.2.0`**, but py3.12 has NO prebuilt mmcv<2.2
+  (those stop at cp311/torch2.1). Fix = **Cell 2b patch**: `importlib.util.find_spec(name).origin` to locate
+  mmdet/mmpose `__init__.py` WITHOUT importing, then regex-bump `mmcv_maximum_version 2.2.0→2.3.0` (+ mmpose
+  `mmdet_maximum_version 3.3.0→3.4.0`). mmcv 2.2.0 runs fine with mmdet 3.3.0 for inference; the assert is just
+  conservative. After the patch, Cell 5 builds both models.
+- **Colab debug round 3 (numpy):** Cell 5 then hit `cannot import name '_center' from numpy._core.umath` —
+  a later `pip install` had bounced numpy back to 2.x, but mmcv 2.2.0's compiled ops need **numpy<2** and
+  Colab's default scipy/opencv are built for numpy 2. Fix: end Cell 2 with
+  `pip install --no-deps --force-reinstall numpy==1.26.4 scipy==1.12.0 opencv-python==4.10.0.84` (LAST, so
+  nothing re-upgrades numpy), then **Runtime>Restart session** to clear the half-loaded numpy, then run Cells 3–8
+  (installs + /content + the on-disk mmdet patch all persist across a session restart).
+- **Colab debug round 4 (xtcocotools):** numpy fix worked (torch 2.3.1 confirmed, mmdet imports clean), then
+  `ModuleNotFoundError: xtcocotools` — mmpose imports its COCO dataset classes at load time. Fix (Cell 2 step 6):
+  `pip install cython>=0.29` then `pip install --no-deps --no-build-isolation xtcocotools` (build against the
+  pinned numpy 1.26 so it doesn't drag numpy 2 back). munkres also added preemptively. Env recipe now complete
+  in the notebook; expected next: Cell 5 prints keypoint order, Cell 6 the hit-rate.
+- **Colab debug round 5 (xtcocotools STUB):** xtcocotools 1.14.3 sdist **won't build on py3.12**
+  (`metadata-generation-failed`). Solution: **don't install it — stub it.** mmpose imports
+  `from xtcocotools.coco import COCO` at load time (via BaseCocoStyleDataset), but top-down inference never
+  builds a COCO dataset, so only the importable NAME is needed. Cell 5 now registers a fake `xtcocotools`
+  (coco.COCO, cocoeval.COCOeval, mask.*) in `sys.modules` before importing mmpose. Keypoint order/meta comes
+  from the pose config's inline `dataset_info` (parse_pose_metainfo), NOT xtcocotools, so inference is unaffected.
+  **This should be the final env fix — the whole import chain is now satisfied.**
+- **Colab debug round 6 (registry scope):** stub worked, then `AssertionError: scope mmpose exists in runner
+  registry` — the interactive stub snippet I handed over purged `mmpose` from `sys.modules` but NOT `mmengine`,
+  so Cell 5 re-registered the `mmpose` scope in mmengine's still-alive global registry. **Not a code bug** —
+  fix is a clean **Runtime>Restart session**, then run Cells 3–8 once in order (mmpose imports exactly once).
+  The **repo notebook's baked-in Cell 5 stub has NO purge loop**, so a fresh run never hits this. Env recipe
+  is fully settled; awaiting the first real 2D output (keypoint order + hit-rate + overlay).
+- **Colab debug rounds 7–8 (munkres + pkgutil):** after restart, `No module named 'munkres'` (mmpose imports
+  it in codecs/associative_embedding at load) → `pip install munkres` (pure-python, was in Cell 2 but got
+  aborted alongside the failed xtcocotools line). Then `AttributeError: module 'pkgutil' has no attribute
+  'ImpImporter'` — mmpose.apis pulls in an old `pkg_resources` (via MMPoseInferencer→get_installed_path) that
+  references `pkgutil.ImpImporter`, removed in py3.12. Fix (baked into Cell 5, before the mmpose import):
+  `if not hasattr(pkgutil,'ImpImporter'): pkgutil.ImpImporter = type('ImpImporter',(),{})` (dummy class, only
+  used as a finder dict-key that never runs). **The full env recipe is now: torch2.3.1 + mmcv2.2.0 +
+  mmdet/mmpose --no-deps + mmcv-ceiling patch + numpy1.26/scipy1.12/opencv4.10 pin + munkres + xtcocotools
+  stub + pkgutil.ImpImporter shim.** All baked into the notebook (Cell 2/2b/5). Awaiting first 2D output.
+- **Colab debug round 9 (numpy ABI):** Colab VM recycled overnight (all installs + /content wiped — re-run
+  needed). Fresh top-to-bottom run got past ALL import fixes, then `ValueError: numpy.dtype size changed,
+  Expected 96 from C header, got 88 from PyObject` during torch import → **mixed numpy install**: an in-place
+  downgrade to 1.26.4 left orphaned numpy-2.0 `.so` files (numpy 2.0 reorganized `core`→`_core`), so the py
+  side is 1.x (88) but a compiled `.so` is 2.0 (96). Fix (Cell 2 step 5, hardened): `pip uninstall -y numpy` +
+  `rm -rf .../dist-packages/numpy*` + `pip install --no-cache-dir numpy==1.26.4 scipy==1.12.0 opencv-python==4.10.0.84`.
+  **Lesson: the whole OpenMMLab-on-Colab stack is fragile enough that once we get one clean 2D output, cache the
+  built env / frames to Drive so we don't re-run this gauntlet after every VM recycle.**
+- **Colab debug round 10 (FileFinder.find_module — likely the LAST env fix):** numpy ABI fix confirmed working
+  — a clean run got *all the way through* torch + mmdet + the xtcocotools stub, then failed on the mmpose import
+  with `AttributeError: 'FileFinder' object has no attribute 'find_module'`. Cause: `mmpose.apis` builds its
+  inferencer registry, which calls `mmengine ... get_installed_path('mmpose')`, which imports **setuptools'
+  `pkg_resources`**; on first import pkg_resources scans installed dists and runs `declare_namespace('google')`
+  (Colab's `google` is a namespace pkg), whose legacy `_handle_ns` falls back to `importer.find_module(...)` —
+  a method **py3.12 removed from `FileFinder`**. So it's setuptools' ancient namespace shim dying on 3.12, not
+  mmpose's pose code. Fix (baked into Cell 5, before the mmpose import): restore a compatible method —
+  `if not hasattr(importlib.machinery.FileFinder,'find_module'): FileFinder.find_module = lambda self,name,path=None: (s.loader if (s:=self.find_spec(name)) else None)`.
+  Also added **Cell 2c "DEBUG PROBE"** (per user request for a pinpoint cell): self-contained, applies the same
+  shims, then imports numpy/torch/mmcv/mmengine/mmdet/mmpose one at a time printing PASS/FAIL + a 2-line trace,
+  so the exact culprit is named without a full Cell-3→5 re-run. **Full env recipe now: torch2.3.1 + mmcv2.2.0 +
+  mmdet/mmpose --no-deps + mmcv-ceiling patch + numpy-nuke→1.26.4/scipy1.12/opencv4.10 + munkres + xtcocotools
+  stub + pkgutil.ImpImporter shim + FileFinder.find_module shim.**
+- **Colab debug round 11 (numpy pin wasn't STICKING — the debug probe paid off):** the FileFinder shim worked;
+  a clean run got past every import shim, and **Cell 2c pinpointed the real culprit exactly**: `numpy 2.0.2`
+  loaded at model-build time even though Cell 2 ended with "Successfully installed numpy-1.26.4". So numpy was
+  being **bounced back to 2.x** between the pin and the import (a re-pull and/or a mixed/shadow install), and
+  mmcv/mmdet's numpy-1.x-compiled ops then died on `numpy.dtype size changed, Expected 96 got 88`. Root cause of
+  the whole multi-round numpy saga: downgrading numpy **last, in the same kernel, with no hard restart** — fragile.
+  **Real fix (Cell 2 rebuilt):** (1) a pip **constraints file** `numpy==1.26.4` passed via `{C}` to EVERY install
+  so nothing can bounce numpy; (2) install a **clean numpy 1.26.4 FIRST** (`--force-reinstall --no-deps` + rm incl.
+  `numpy.libs`) so every compiled pkg agrees on it; (3) **auto-restart the kernel** at the end of Cell 2
+  (`IPython...kernel.do_shutdown(True)`) so the clean numpy actually loads. Also **folded the mmcv-ceiling patch
+  into Cell 2** (removed standalone Cell 2b) and **hardened Cell 2c**: it now prints `numpy.__version__ @ __file__`
+  and hard-asserts 1.26.4 (a wrong path ⇒ shadow install). Added a numpy-version **guard at the top of Cell 5**
+  (fail-fast with a clear "run Cell 2 + restart" message instead of a cryptic ABI crash). New run order:
+  **1 → 2 (installs+patch+auto-restart) → 2c (verify) → 3-8**. **Lesson: for a numpy downgrade on Colab, a
+  constraints file + a kernel restart are mandatory — an in-kernel last-step pin does not hold.**
+
+## 2026-07-25 — Colab round 12: numpy was a FALSE ALARM; the real blocker was `transformers`
+
+**The import gauntlet is over — every module now imports and both models are one cell away.**
+
+- **Correction to round 11.** Round 11 concluded numpy was "being bounced back to 2.x" and I
+  hypothesised Colab was *restoring* its preinstalled numpy at kernel start. **Both were wrong.**
+  A forensics cell settled it: the on-disk numpy dir was written at 00:03:28 (Cell 2's install)
+  and **never touched again** — `numpy-1.26.4.dist-info`, one copy, no shadow install, mtime
+  well *before* the 00:07:38 restart. What actually happened: the `numpy: 2.0.2` line came from a
+  kernel that had **already imported numpy 2.x at startup** (Colab does, before Cell 2 replaces it
+  on disk) — i.e. a stale pre-restart execution, not a disk state. The constraints file + numpy-first
+  + auto-restart from round 11 were correct and are kept; the *diagnosis* of why they were needed
+  was not. **Lesson: `numpy.__version__` in a kernel that ran the installer is not evidence about
+  the disk — check on-disk state from a fresh subprocess, and check the dir mtime before blaming
+  the platform.**
+- **Cell 2c rewritten to REPAIR, not abort.** It now pip-force-reinstalls 1.26.4, drops
+  `numpy*` from `sys.modules`, and re-imports — so a stale kernel fixes itself with no second
+  restart (safe because mmcv/mmdet/mmpose have not been imported yet at that point). It also
+  reports in-kernel vs on-disk numpy, flags a second `dist-info`, and warns if `transformers`
+  is still installed. The old `raise SystemExit` version just dead-ended the run.
+- **REAL blocker found — `transformers`.** With numpy correct, all three probes PASS, Cell 3
+  (checkpoints) and Cell 4 (189 frames) are clean, and Cell 5 reaches `torch: 2.3.1+cu121 | cuda? True`
+  — then `init_detector` dies with **`NameError: name 'nn' is not defined`** raised from
+  `transformers/integrations/accelerate.py`. Chain: `MODELS.build` → `mmdet.models` → its
+  GLIP/Grounding-DINO **language models** → `import transformers`; Colab's transformers requires
+  **torch >= 2.4**, so on our pinned torch 2.3.1 it prints "Disabling PyTorch ... found 2.3.1" and
+  then a module annotated with `nn.Module` explodes. It is a `NameError`, so mmdet's
+  `except ImportError` around that import **cannot catch it**. **Fix (Cell 2 step 4b):
+  `pip uninstall -y transformers`** — RTMDet is pure CNN and needs none of it; absent, mmdet just
+  warns. Documented fallback if something else ever needs it: `transformers==4.44.2` (last
+  torch-2.3-compatible line).
+- **Notebook v3 (`tools/colab/racketvision_extract.ipynb`, 11 cells)** — validated, all checks pass:
+  - Cell 2: `+ pip uninstall -y transformers`; restart comment now states the real reason (the
+    kernel imported numpy 2.x at startup, so only a fresh kernel can load 1.26.4).
+  - Cell 2c: verify → **auto-repair** → probe (above).
+  - **Cell 4: `ffprobe`s the source** for real fps + resolution instead of the hardcoded `FPS = 25`,
+    exports `SRC_W`/`SRC_H`, and asserts frames were actually extracted.
+  - **Cell 6: geometry is now part of the JSON contract** — `frame_size` (the 1080p frame the model
+    ran on) + `source_size` + the `det` settings. Without these, Stage 2 cannot line 1080p racket
+    pixels up with an SMPL body that came from a **720p** pass of the same clip. This was a real gap.
+  - **Cell 7: cast keypoints to python `int`** — OpenCV ≥4.6 rejects `np.int64` in point tuples
+    (`Can't parse 'pt1'`), so the overlay would have crashed on the first detected frame. Also
+    stamps the detection score on the frame.
+- **Docs synced:** `tools/colab/README.md` now covers **both** notebooks (table + a full RacketVision
+  section: keypoint order/reliability, run order, output contract, the whole env recipe and its two
+  traps); `tools/README.md` gained the Blender Route-A viewer and racket sections and stopped
+  claiming WHAM; `CLAUDE.md` Phase 2.5 marks Step C shelved and Step D active; `TODO.md` Stage 1
+  status + a code-review follow-up block.
+
+### Code review of the video-to-twin work so far (2026-07-25)
+
+Scope: `tools/smpl_to_skeleton.py`, `tools/blender/twin_compare.py`, both Colab notebooks, tests.
+**Tests: 36/36 pass.** No blocking defects. Fixed in this pass: the Cell 7 `np.int64` crash, the
+missing frame/source geometry in `racket2d.json`, the hardcoded 25 fps, and the dead-end Cell 2c.
+Open findings, none blocking (also mirrored into `TODO.md`):
+
+1. **Mixed coordinate frames inside one document (highest-value finding).** `build_v2_document`
+   applies `WORLD_TO_UNITY` to `joints3d` and to `transl`, but writes `smpl.global_orient`
+   **unchanged** — so within a single frame object, `joints_flat` / `root_world` / `smpl.transl`
+   are Unity-frame while `smpl.global_orient` is still ROMP camera-frame. Nothing is broken today
+   only because the Blender path re-derives the pelvis as `Rx(180°) @ quat(global_orient)` and
+   ignores the joints. A future consumer that trusts the `smpl` block as a unit will be wrong.
+   Fix = transform it or state the split loudly in the schema doc.
+2. **Silent data loss.** `betas` is truncated to the first 10 values with no warning, and a missing
+   `fps` key silently becomes 30.0 — which would quietly desync every `time` field. Both should warn.
+3. **Test gap.** `load_wham_output` is tested in isolation, but no test drives `main()` through
+   `--wham-output` to a written file, so an argparse/wiring regression would ship green.
+4. **Naming drift, accepted.** `wham_extract.ipynb` runs ROMP and `--wham-output` reads any
+   conforming npz. Renaming is still open, but the READMEs now say so explicitly, so this is
+   cosmetic rather than misleading.
+5. **`twin_compare.py` — clean.** Idempotent, documents its scene contract, degrades safely
+   (`_joint_objs` handles a missing collection). Two notes: `_bodies()` will `StopIteration` if a
+   body collection loses its armature/mesh, and `register()` swallows every exception, so a genuine
+   registration error looks like success. Acceptable for a Blender-side tool; worth knowing.
+6. **Operational.** The Colab env takes ~5 min to rebuild and Colab wipes the VM after a few idle
+   hours — cache the built env + extracted frames to Drive before the next VM recycle.
+
+---
+
+## 2026-07-25 — Stage 1 RUNS: first real racket 2D output (and the detector is the weak link)
+
+The RacketVision notebook completed end to end for the first time. Artifacts landed in
+`data/racket/`: **`test_6.racket2d.json`** (189 frames) + `test_6_racket_overlay.mp4`.
+The v3 contract held — `frame_size [1920,1080]`, `source_size [3840,2160]`, `fps 25.0`
+(ffprobed from the 4K source), `keypoint_names ['top','bottom','handle','left','right']`.
+
+### The number: 16/189 frames = 8.5% hit rate
+
+Detections clustered in four short bursts (frame 4; 65–68; 92–94; 101–117) with `det_score`
+between 0.31 and 0.85 — everything else `keypoints: null`.
+
+### But the pose head is excellent — it's RTMDet recall that fails
+
+Pulled frames out of the overlay and looked at them. This is the finding that shapes Stage 1b:
+
+- **frame 105, `det = 0.31`** — overhead smash, racket up and slightly behind the head. The
+  five keypoints are *dead on*: `top` at the tip, `left`/`right` across the head rim, `handle`
+  at the grip in her hand. A 0.31-score box gave a textbook fit.
+- **frame 66, `det = 0.74`** — racket held out horizontally against a bright wall. Shaft line
+  runs exactly along the shaft.
+- **frame 30 — missed.** Racket plainly visible, hanging down-left from her hand, dark shaft
+  against the dark red court.
+- **frame 150 — missed.** Racket head face-on, overlapping her torso.
+
+So the misses are ordinary badminton poses (low contrast against the floor, or head-on over
+the body), and the model *when it fires* is accurate even at the threshold floor. Conclusion:
+**the useful detector signal lives below `DET_THR = 0.30`**, and we were throwing it away.
+
+### Notebook v4 — recall first, decide later
+
+1. **`DET_THR` 0.30 → 0.05.** Be permissive at inference; filter on `det_score` /
+   `keypoint_scores` downstream where it's free to re-tune.
+2. **Keep the top 3 boxes per frame, with keypoints for each** (`frames[i].cands`, best first).
+   RTMPose is cheap; a second Colab round-trip is not. Picking the right box is a temporal-
+   continuity problem, and now it can be solved by a local script instead of a re-run.
+   The flat `bbox`/`det_score`/`keypoints`/`keypoint_scores` stay = `cands[0]` (v3-compatible).
+3. **Cell 6 prints a `det >= x` table** (0.05/0.10/0.20/0.30/0.50) so the next run tells us
+   empirically where to cut instead of guessing again.
+4. **Overlay draws the runner-up boxes** in thin gray with their scores, and stamps
+   `no racket` on empty frames — a wrong pick is now visible rather than silently authoritative.
+
+Re-running only needs Cells 6–8 on a warm VM; the models are already built.
+
+### Privacy-rule gap found and closed
+
+`.gitignore` covered `data/**/*.png|jpg` but **not video**, so the new
+`data/racket/test_6_racket_overlay.mp4` — 3.8 MB of frames of a person — was committable on a
+public repo. Added `data/**/*.mp4` + `data/**/*.mov`. (`data/raw/` and `data/moves/` were
+already covered wholesale; this catches debug renders in any other `data/<tool>/` dir.)
+`test_6.racket2d.json` stays tracked — it's coordinates, not imagery.
+
+---
+
+## 2026-07-25 — v4 run: 8.5% → 44%, and the lesson that detector score is not confidence
+
+The v4 notebook (`DET_THR=0.05`, top-3 boxes per frame with keypoints for each) re-ran on
+the warm VM. `data/racket/test_6.racket2d.json` is now 186 KB with a `cands` list per frame.
+
+### The raw numbers
+
+| gate | frames with a top-1 pick |
+|---|---|
+| `det >= 0.05` | 138/189 (73%) |
+| `det >= 0.10` |  64/189 (34%) |
+| `det >= 0.20` |  27/189 (14%) |
+| `det >= 0.30` |  16/189 (8%)  ← v3 |
+
+Candidates per frame: 0 → 51 frames, 1 → 62, 2 → 38, 3 → 38.
+
+But 73% was not real coverage: 16 of 123 adjacent-frame pairs jumped >250 px, nearly all at
+`det < 0.10`. Frame 30 at `det = 0.06` put the box on the far right edge — a net-post
+artifact — while the racket in her hand went unfound.
+
+### The finding: rank by KEYPOINT score, not detector score
+
+Comparing candidates on known-good frames made it obvious:
+
+| | det_score | mean kp score |
+|---|---|---|
+| fr66 real racket | 0.74 | **0.68** |
+| fr105 real racket (overhead) | 0.31 | **0.70** |
+| fr60 real racket, **rank 1** | **0.08** | **0.73** |
+| fr126 real racket | 0.17 | **0.71** |
+| fr30 net-post artifact | 0.06 | 0.11 |
+| fr66 rank-1 artifact | 0.07 | 0.13 |
+
+RTMPose cannot find a shaft and a head in something that is not a racket, so its scores
+separate cleanly at ~0.5 where the detector's do not separate at all. Rendered fr60 and
+fr126 from the source to confirm by eye: both are textbook fits the detector score would
+have discarded. **Re-ranking changes the pick in 22 frames**, and 9 of the final picks are
+runner-up boxes — exactly what keeping top-K was for.
+
+### `tools/select_racket_track.py` (new)
+
+Turns the candidate soup into one series, `<id>.rackettrack.json`, per frame labelled
+`detected` / `interpolated` / `missing`:
+
+1. **Anchors** — best-by-keypoint-score if `>= 0.50`. No neighbour dependence, so a bad
+   frame cannot drag the track.
+2. **Outlier rejection** — drop a pick >250 px from *every* anchor within ±2 frames. Anchors
+   with no neighbours at all survive: absence of corroboration is not evidence against.
+3. **Continuity recovery** — for empty frames, accept down to `0.35` if near an accepted
+   neighbour **and** the grip-to-tip length is within 2× of it. That length guard came
+   straight from a bug: frames 57–58 were admitted at kp 0.45 with the keypoints bunched on
+   the grip and the head never found, giving a 68 px shaft beside a 200 px one. Rendering
+   fr58 showed it; the guard removed both and lifted min shaft length to a plausible 129 px.
+4. **Interpolation** — linear fill of bracketed gaps ≤4 frames. Never extrapolates past the
+   end of a run: there is no evidence out there, and invented points would be
+   indistinguishable from measured ones downstream.
+
+Result on test_6: **76 detected + 7 interpolated = 83/189 (44%)**, zero >250 px jumps,
+shaft length min 129 / median 222 / max 336 px. Covered runs 0–18, 57–84, 92–95, 101–131,
+144–146 — i.e. **the two swings**, which is the part Stage 2 actually needs.
+
+`--overlay` renders the track over the source clip with interpolated frames dimmed.
+17 new tests (56 total, all passing), including the end-to-end CLI path that the
+2026-07-25 code review flagged as missing for `smpl_to_skeleton.py`.
+
+### What is still missing, and the one idea worth a Colab run
+
+Of the 106 uncovered frames, **50 produced no candidate at all** even at 0.05, and the rest
+peaked at a median kp score of 0.16 — so the gate is not being over-strict, the detector
+genuinely does not see these. The two failure modes are the racket hanging down against the
+dark red floor, and the head face-on overlapping the torso.
+
+The promising fix is **crop-and-upscale around the hand**: `test_6.skeleton.json` gives the
+SMPL hand position for every frame, so we can crop a box around it, upscale, and run RTMDet
+on that — this is a small-object recall problem. Worth doing only if 44% proves insufficient
+once the racket is on the twin.
+
+### Privacy
+
+`data/racket/test_6.rackettrack_overlay.mp4` is covered by the `data/**/*.mp4` rule added
+earlier today. `.racket2d.json` and `.rackettrack.json` are coordinates and stay tracked.
+
+---
+
+## 2026-07-25 — Stage 2 DONE: the racket is 3D and on the skeleton
+
+`data/skeleton/test_6.skeleton_racket.json` now carries **26 joints** — the SMPL 24 plus
+**24 `racket_grip`** (parent: the holding wrist) and **25 `racket_head`** (parent: 24).
+Two new tools, 84/84 tests green.
+
+### The blocker: ROMP never exported its camera
+
+`test_6.smpl.npz` has `joints3d/pose/betas/transl/fps` and no camera, so there was no way to
+relate racket pixels to body metres. Rather than re-run ROMP, `tools/fit_camera.py` recovers
+it locally: MediaPipe supplies 2D landmarks on the same clip (CPU, reusing
+`extract_skeleton.extract_raw`), ROMP supplies the 3D joints, and 12 limb joints correspond
+between the two skeletons — 2268 pairs over 189 frames.
+
+**Which model, measured rather than assumed.** One global pinhole `u = fx·X/Z + cx` fit
+badly: fx/fy split by 2.6x, 60 px rms. That is a model absorbing error. Per frame:
+
+| model | median rms (at 3840x2160) |
+|---|---|
+| weak perspective `u = s·X + tx` | **22.7 px** |
+| pinhole `(f, cx, cy)` | 34.0 px |
+
+Weak perspective wins because it is what ROMP optimises — its depth is a per-frame scale,
+not a metric distance, so internal 3D structure is meaningful while absolute Z is not. And a
+per-frame camera is *sufficient*: the racket and the body only ever need relating within one
+frame. Final fit: **189/189 frames, median 25.5 px rms at 4K** (~12.7 px at 1080p).
+Image coords are normalized by frame **width** on both axes, which dissolves the
+1080p-racket / 720p-SMPL / 4K-source mismatch without any bookkeeping.
+
+### The lift: weak perspective makes the geometry almost trivial
+
+Inverting `u = s·X + tx` recovers the racket's world **X and Y outright**. Only `dZ` is
+unknown, and the rigid racket gives it:
+
+    dZ = +/- sqrt(L^2 - dX^2 - dY^2)
+
+so each frame has exactly two candidates — tip toward the camera or away. The sign is
+resolved per *run* of measured frames: seed from the forearm (a racket extends away from the
+elbow far more often than back over it), then propagate by continuity. Runs are seeded
+independently so a stale sign cannot cross a gap. When apparent length exceeds `L`, `dZ`
+clamps to 0 rather than going imaginary.
+
+`L` is **measured, not assumed**: apparent length peaks when the racket lies in the image
+plane, so the 90th percentile of observed apparent lengths is the true length. This avoids
+guessing where RacketVision's `handle` keypoint sits along the grip.
+
+### Three independent validations, none of them designed in
+
+1. **Racket length came out at 0.693 m.** A badminton racket's regulation maximum is
+   **0.680 m**. That number was derived from MediaPipe 2D, ROMP 3D and RacketVision keypoints
+   with no physical prior anywhere in the chain — agreeing to 2% says the camera scale is right.
+2. **The grip lands 4.5 cm from the SMPL right hand** (vs 69 cm for the left). That is how
+   handedness is auto-detected, and 4.5 cm is about where a grip sits relative to a hand joint.
+3. **Zero >90° flips** across 78 consecutive measured pairs; median frame-to-frame direction
+   change 6.5°, p90 16.6°. The sign resolution is stable without any smoothing.
+
+Reprojecting the lifted 3D racket back through the camera lands it on the real racket in the
+video (checked on fr126). On fr30 — a frame with **no detection at all**, filled by the
+forearm prior — the reprojection still lands within a few degrees of the true shaft, which is
+the reassuring answer to "what happens in the 56% of frames the detector misses".
+
+### Coverage and honesty about it
+
+    measured   83/189  (44%)   from vision
+    prior     106/189  (56%)   forearm direction at the hand, confidence 0
+    none        0/189  (0%)
+
+Every frame carries `racket_status`, and prior frames are written with **confidence 0**, so a
+posed racket can never be read as a measured one downstream.
+
+### Caveat for Stage 3
+
+`joints_flat` is now **26** joints, not 24. Consumers must read `joint_names`/`parents`;
+anything with a hardcoded 24 will break. The output is a new file — `test_6.skeleton.json`
+is untouched.
+
+---
+
+## 2026-07-25 — Stage 2b: the racket has ROLL (it was a line)
+
+wenzhen spotted the real limitation: grip + tip is only a **line**. Nothing in the long axis
+says whether the face is edge-on or flat-on — and face angle is the whole point for stroke
+and injury analysis. (The framing was "MediaPipe can't give rotation", but MediaPipe was only
+ever used to recover the camera; the line came from using 2 of the 5 keypoints.)
+
+### The roll was already in the data
+
+`left`/`right` straddle the head rim: perpendicular to the shaft, *in* the racket plane —
+exactly the missing DOF. The solve mirrors the shaft's: inverting weak perspective gives the
+width vector's X and Y, the head width gives |dZ|, and perpendicularity to the shaft picks
+its sign. (First attempt derived dZ *from* perpendicularity alone — wrong: it collapses to
+zero exactly when the face goes edge-on, which is when you most need it.)
+
+**Measured head width: 0.209 m**, against a real badminton head of 0.20-0.23 m. Third
+independent scale check to fall out of this pipeline, after the 0.693 m length and the 4.5 cm
+grip-to-hand distance.
+
+New joint **26 `racket_side`** (parent 25), half a head-width off the tip in the racket plane.
+Consumers build the frame as `shaft = head-grip`, `across = side-head`,
+`normal = shaft x across`. Joint count is now **27**.
+
+### Roll is held as an angle, and it is pi-periodic
+
+Stored as a scalar angle about the shaft rather than a vector, because that is what can be
+smoothed and interpolated honestly. Critically it is **pi-periodic**: `left` and `right` are
+interchangeable on a symmetric head, so a 180-degree jump is a relabelling, not motion, and
+ordinary 2*pi unwrapping would read it as half a turn of real rotation.
+
+### Rejected after testing: SMPL's wrist rotation
+
+The obvious universal fallback — the racket is rigidly gripped, so drive roll from the hand,
+which SMPL has every frame. Tested by expressing the measured shaft direction in the SMPL
+right-wrist frame; if the grip were rigid and the wrist accurate it would be constant.
+It is not: **median 32 deg deviation, p90 75 deg**. ROMP's wrist orientation is unreliable
+(the hand is a few pixels and monocular SMPL barely constrains it). Dead end, documented.
+
+### Honest coverage, and a bug caught on the way
+
+First run reported roll at **78%** — higher than the 44% position coverage, which is
+impossible. Cause: the roll smoother interpolated between measurements with no gap limit, so
+it bridged the 42-frame holes and labelled the result "measured". Fixed twice over: gaps
+longer than 4 frames are no longer bridged (matching the 2D track's own limit), and roll now
+has its own vocabulary where bridged frames read `interpolated`, never `measured`.
+
+    position   measured 83 (44%)  prior 106 (56%)  none 0
+    roll       measured 63 (33%)  interpolated 10 (5%)  none 116 (61%)
+    roll rejected because: no_racket 106, low_side_score 12, not_perpendicular 8
+
+Roll carries a **separate confidence** from position, because the shaft can be solidly
+measured in a frame where the face angle is a guess — collapsing the two would hide exactly
+that. Gating (min(left,right) score >= 0.50, perpendicularity correction <= 25 deg) plus a
+3-frame median cut frame-to-frame face-normal noise from p90 40 deg to **p90 31 deg**,
+median 4.9 deg.
+
+Four adjacent pairs still move >45 deg. Some is real — frame 126 sits in the smash with the
+head at 8.8 m/s, where hard pronation is genuine — but near-90-degree changes are also the
+signature of a width-vector sign flip, and without ground truth the two are not separable.
+Recorded rather than tuned away.
+
+### Also fixed
+
+`select_racket_track.py` only carried the *mean* keypoint score, so the per-keypoint
+`left`/`right` confidences the roll gate needs were not in the track at all (I had to reach
+back into `racket2d.json` to prototype). It now carries `keypoint_scores` through.
+
+### Verification
+
+Reprojecting the oriented racket — shaft plus a head ellipse drawn *in the solved face
+plane* — puts the ellipse on the real racket head at the correct tilt on frames 105 and 118.
+103 tests pass.
+
+### Where the monocular ceiling is
+
+Roll is precisely what a second camera fixes cheaply, and the December plan already has the
+two-camera OpenCap rig. Optional next lever if monocular roll must improve sooner: MediaPipe
+**Hands** (21 landmarks -> palm normal, a dedicated hand model rather than SMPL's guess),
+validated against the 63 measured-roll frames before being trusted.
+
+---
+
+## 2026-07-25 — Stage 3: the racket is on the Blender twin (vision-racket pipeline complete)
+
+`tools/blender/racket_viewer.py`. Open `models/smpl/test_6_compare.blend` → Scripting →
+Alt+P → the **"Racket"** tab in the N-panel. Idempotent, like `twin_compare.py`. Built and
+verified live over the Blender MCP bridge (Blender 5.2 LTS).
+
+### The trap: skeleton.json is MIRRORED relative to the scene
+
+A first per-frame Procrustes fit of the 24 JSON joints onto the 24 armature bone heads gave
+**0.21 m rms** and, tellingly, `det(R) = -1` on every single frame. That determinant is the
+whole story: `skeleton.json` has been through `WORLD_TO_UNITY = diag(1,-1,1)`, which is a
+**reflection**, not a rotation. It turns the body into its mirror image, where left and right
+are swapped — so matching `left_hip` to `L_Hip` was asking Procrustes to fit a body to its
+own mirror, and the best it could do was a 21 cm compromise.
+
+Multiplying by `diag(1,-1,1)` again (it is its own inverse) puts the joints back in ROMP
+camera space, and the fit collapses to **0.026 m rms with det = +1**. The script now excludes
+reflections outright: a mirrored fit looks numerically fine while putting the racket on the
+wrong arm.
+
+Diagnosis order that got there, worth repeating: global fit (0.64 m) -> pelvis-relative
+(0.25 m) -> per-frame (0.21 m) -> compare limb lengths (agree to 3-7%, so not scale, and
+not shape) -> notice det = -1 everywhere. The limb-length check is what ruled out the
+plausible-but-wrong "different body shape" explanation.
+
+### The second trap: the twins play in place
+
+Body A's pelvis is byte-identical at every frame — the SMPL add-on animates pose only, with
+no root translation, while the JSON carries the real translation (X from -2.97 to -0.32 m).
+So no single world transform can exist. Fitting **per frame** absorbs it automatically and
+costs nothing, and the residual doubles as a live quality read-out.
+
+Residual after both fixes: **2.6 cm** median on the raw body, 3.0 cm on the smooth one
+(max 11 cm). That remainder is the add-on's template body against ROMP's regressed joints —
+a shape difference, not an error — and it is the honest precision of this viewer.
+
+### Confidence is drawn, not buried
+
+The racket renders as a shaft plus a **filled elliptical bed** (a face, so orientation reads
+at a glance — the point of Stage 2b). Object colour is keyframed with CONSTANT interpolation:
+
+    green  position + roll measured   63 frames  (33%)
+    amber  position measured, roll guessed  20   (11%)
+    red    position is the forearm prior   106   (56%)
+
+Drawing one uniform colour would imply three times more real data than exists. Constant
+interpolation matters too: with the default Bezier, a red prior frame would *fade* through
+orange and read as medium confidence.
+
+### Verified
+
+Frame 118 renders green with the bed tilted, in the raised right hand — matching the video.
+Frame 30 renders red hanging down at the side — also matching. Grip-to-hand distance in the
+scene is 6.6 cm, consistent with the 4.5 cm anatomical offset plus the 2.6 cm fit residual.
+
+### Blender 5.2 API notes (cost a round each)
+
+- `Action.fcurves` is gone; 4.4+ uses layer/strip **channelbags**. `action_fcurves()` reads
+  both layouts so the script survives whichever Blender opens the .blend next.
+- `Material.use_nodes` is deprecated in 6.0 and warns on assignment — only set when False.
+- `BLENDER_EEVEE_NEXT` is not a valid engine id here; it is `BLENDER_EEVEE`.
+
+### Scene state
+
+The .blend is **gitignored** (`models/`), so the script is the durable artifact — re-run it
+after any re-lift. The file was left **unsaved**; I set the render engine and moved the
+camera for verification renders and restored the frame to 124.
+
+---
+
+## 2026-07-26 — Racket smoothing + toggles, and the pipeline timed end to end
+
+### Smoothing a rigid body (`tools/racket_smoothing.py`, new)
+
+The "smooth" twin was carrying a **raw** racket — the comparison was only half honest.
+Fixed, but not by filtering the three racket points: they are not independent (fixed length,
+fixed perpendicular half-width), so per-point filtering turns a rigid object into a wobbling
+one. The racket is decomposed into what is genuinely free — grip position, shaft direction,
+width direction — each smoothed, then recomposed at the median length and width. Rigidity is
+preserved **by construction**; tests assert `std(length) < 1e-9`, not "approximately rigid".
+
+Width vectors are sign-aligned first: `left`/`right` are interchangeable, so one meaningless
+relabelling would make the smoother interpolate through the zero vector and collapse the
+racket's plane mid-swing.
+
+Two implementation findings, both measured rather than assumed:
+
+1. **Explicit Euler is unusable here.** The obvious `v += a*dt; x += v*dt` spring overflows
+   once `omega*dt` approaches 1 — at 25 fps that is any tau below ~0.1 s, well inside the
+   range someone would dial in. Replaced with the closed-form solution of the critically
+   damped ODE, which is stable at every timestep. Verified down to tau = 0.02 s.
+2. **Zero-phase, not causal.** A single causal pass at tau = 0.12 s lags 2.5 frames. At the
+   smash the racket head moves 8.8 m/s, so 100 ms of lag drags it most of a metre behind the
+   hand holding it. This is offline data, so the filter runs forwards then backwards:
+   **93% less frame-to-frame jitter, zero lag** (causal alone: 59% and 2.5 frames behind).
+
+**Careful with that 93%.** It is a high-frequency metric (std of successive differences).
+RMS error against the true trajectory falls only ~half, because tau = 0.12 s at 25 fps
+averages just a few frames — and on a fast swing barely at all: a test pins the trade-off
+explicitly, asserting that at 2.5 rad/s smoothing stays *between* 0.5x and 1.0x of the raw
+error, i.e. the filter is blurring real motion as much as noise. Anyone raising tau for a
+prettier idle pose is paying for it during the stroke. Smoothing moves the head a median
+5.8 cm on test_6, ~10 cm at the smash.
+
+### Viewer (`tools/blender/racket_viewer.py`)
+
+Two actions per racket (`act_racket_<key>_raw` / `_smooth`) so **Style** switches exactly the
+way the body's does. Panel is now N > "Racket": per body Style raw/smooth, Racket on/off,
+Joints on/off. Three racket joint spheres (grip blue / head green / side magenta) **parented
+to the racket**, so they need no keyframes at all.
+
+Three bugs caught while building it, all of the same family — state that looks set but is not:
+
+- **Action duplication.** `use_fake_user = True` (needed so both styles survive a save) means
+  `users == 0` is never true, so the old cleanup never fired and `actions.new()` produced
+  `act_racket_A_raw.001`, `.002`, `.003` — a fresh duplicate set every single run. Cleanup
+  now clears the fake user first and sweeps everything matching the prefix. Verified
+  idempotent by running twice and diffing the action list.
+- **Slot binding.** On Blender 4.4+ slotted actions, assigning `ad.action` without binding
+  `ad.action_slot` leaves the action assigned but driving nothing — the racket silently
+  freezes on style switch.
+- **Joint spheres rendered white.** They had materials, but Workbench "Object" colour mode —
+  the mode that makes the confidence colours visible — reads `object.color`, which was never
+  set. Both channels are set now.
+
+Racket joints live in their own `*_racket_joints` collections: `twin_compare.build_joints()`
+clears the body's `*_joints` collection on every run and would delete them.
+
+### Timing, measured on test_6 (189 frames, 7.6 s of 4K @ 25 fps)
+
+    LOCAL (this laptop, no GPU)
+      fit_camera        15.3 s   <- MediaPipe over 189 4K frames; dominates
+      select_racket_track 0.2 s
+      lift_racket_3d      2.8 s
+      Blender viewer      0.5 s
+      local total       ~19 s
+
+    COLAB (GPU, not instrumented -- estimates)
+      ROMP pose pass         ~1-2 min on a warm VM
+      RacketVision 2D pass   ~2-3 min on a warm VM
+      env build (cold VM)    ~5 min, and it is the whole risk -- see tools/colab/README.md
+
+So a 7.6 s clip is **a few minutes of wall-clock on a warm Colab VM, ~20 s locally**, and
+roughly half an hour on a cold VM where the OpenMMLab install has to be rebuilt. The local
+side scales linearly with frame count and is nowhere near the bottleneck; caching the Colab
+env to Drive remains the highest-value operational fix.

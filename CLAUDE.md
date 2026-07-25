@@ -55,9 +55,48 @@ this agent's working context (PROGRESS ledger, technical plans, research notes);
    rolls the bed); NOT welded to the forearm. Per-clip flag: test_3/4/5 carry
    a racket. Step B (DONE 2026-07-17): zero-shot COCO "tennis racket" probe
    `tools/detect_racket.py` — **works** (test_3 90.9% hit rate, best conf
-   0.92); no own-data gathering needed. Step C (next): fuse best-box-near-wrist
-   with the arm prior → `racket` block in skeleton.json. Step D: RacketVision
-   (AAAI'26, MIT, 5 racket keypoints + pretrained ckpts) on Colab.
+   0.92); no own-data gathering needed. Step C (box+arm-prior fusion) is
+   **shelved** — superseded by Step D and off the December critical path.
+   **Step D — RacketVision (ACTIVE, 2026-07-24→):** AAAI'26 MIT model, 5 2D
+   racket keypoints + pretrained ckpts, on Colab —
+   `tools/colab/racketvision_extract.ipynb` (Stage 1: 2D json + overlay;
+   Stage 2: lift to a 3D segment at the SMPL hand, grip idx24 / head idx25;
+   Stage 3: racket on the Blender twin). Setup notes + the full OpenMMLab
+   recipe live in `tools/colab/README.md`; the debug log is in PROGRESS.md.
+   **Stage 1 DONE 2026-07-25** — 44% clean coverage on test_6 (the two swings).
+   Key fact: RTMDet's **detector score is not confidence** (a 0.08 box was a
+   perfect fit, a 0.30 box a net-post artifact); rank candidates by **mean
+   RTMPose keypoint score** instead. The notebook therefore runs wide open at
+   `score_thr 0.05` keeping the top 3 boxes/frame, and `tools/select_racket_track.py`
+   picks one per frame → `data/racket/<id>.rackettrack.json` (per-frame
+   `detected`/`interpolated`/`missing`) — that file is Stage 2's input, not the
+   raw `.racket2d.json`.
+   **Stage 2 DONE 2026-07-25** — `tools/fit_camera.py` (ROMP never exported a
+   camera; recover a **per-frame weak-perspective** one by pairing MediaPipe 2D
+   with ROMP 3D) + `tools/lift_racket_3d.py` (depth from the racket-length
+   constraint; sign from forearm seed + temporal continuity) →
+   `data/skeleton/<id>.skeleton_racket.json`. **That file has 27 joints**
+   (SMPL 24 + `racket_grip` 24 / `racket_head` 25 / `racket_side` 26) — read
+   `joint_names`/`parents`, never a hardcoded 24. Racket frame:
+   `shaft = head−grip`, `across = side−head`, `normal = shaft × across`.
+   Roll comes from the `left`/`right` keypoints and is **much less reliable than
+   position** (33% vs 44% on test_6) — it has its OWN `racket_roll_status` and
+   confidence; check them before trusting the face normal. Measured length
+   0.693 m (vs 0.680 m regulation max) and head width 0.209 m (vs 0.20–0.23 m
+   real) are the headline sanity checks. Do NOT try to drive roll from SMPL's
+   wrist rotation — tested, 32° median error, ROMP's wrist is unreliable.
+   **Stage 3 DONE 2026-07-25** — `tools/blender/racket_viewer.py` draws the
+   racket on both twins (Alt+P in `test_6_compare.blend`, "Racket" N-panel tab;
+   colour = confidence). ⚠️ **`skeleton.json` is MIRRORED** relative to the
+   Blender scene: `WORLD_TO_UNITY = diag(1,-1,1)` is a *reflection*, so undo it
+   (multiply again — self-inverse) before fitting joints to bones, or Procrustes
+   solves for a mirror and swaps left/right (0.21 m vs 0.026 m residual). Also
+   the twins play **in place**, so fit per frame, never globally.
+   Racket smoothing lives in `tools/racket_smoothing.py` (numpy-only *on
+   purpose* — the Blender script imports it, and Blender has no cv2/mediapipe):
+   decompose to grip/shaft-direction/width-direction, smooth, recompose rigid;
+   zero-phase spring, τ=0.12 s. Timing for a 7.6 s clip: ~20 s local + a few
+   minutes on a warm Colab VM (a cold VM adds ~5 min of OpenMMLab install).
    See `docs/for-claude/ai-smoothing-plan.md` (racket tie-in section).
 3. **Phase 3:** **two-camera (OpenCap-style)** capture. *Plan NOT concrete
    yet — single camera is the working assumption for now.* Triangulate 2× 2D pose

@@ -78,6 +78,10 @@ __pycache__/
 # Privacy: frame-bearing images (video frames of people/places) stay local
 data/**/*.png
 data/**/*.jpg
+# ...and frame-bearing VIDEO. Debug/overlay renders land in data/<tool>/ (e.g.
+# data/racket/test_6_racket_overlay.mp4) and are just as identifying as a frame.
+data/**/*.mp4
+data/**/*.mov
 data/calib/archive/
 docs/img/
 
