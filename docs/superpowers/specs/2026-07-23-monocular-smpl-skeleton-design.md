@@ -139,3 +139,41 @@ hands/face (SMPL-X); racket; badminton fine-tuning; near-live/in-Unity inference
 - A Pexels clip yields a Unity twin that **moves across the floor with a visible, articulated spine**.
 - `eval_pose.py` prints per-joint MPJPE/PA-MPJPE on an EMDB/3DPW clip (numbers, not just a render).
 - Swapping the producer (mono → multi-view) would require **no change** to the Unity driver or eval.
+
+## 10. Update 2026-07-24 (engine + Route A)
+
+The §3 decisions stand except two, driven by implementation reality:
+
+- **Engine: WHAM → ROMP.** WHAM has no `install.sh` and its real Colab setup (conda +
+  a compiled SLAM module + checkpoint scripts) is unworkable in a plain Colab. Switched to
+  **ROMP** (`simple_romp`, a pip package) which emits the same per-frame SMPL params. The
+  §5 npz/skeleton contract is unchanged, so this is a pure producer swap — WHAM and
+  4D-Humans remain documented upgrades for temporal smoothing / world trajectory. (Known
+  friction, now handled in the notebook: the official SMPL pkl is `chumpy`-pickled and
+  `chumpy` is broken on Colab Py3.12; the notebook de-chumpifies to a clean pkl once.)
+- **Route A — Blender authors the mesh.** New split: **Blender = model/animation authoring,
+  Unity = court + player viewing.** SMPL params → the SMPL Blender add-on animates a real
+  body **mesh** → **FBX** → Unity. This supersedes the *procedural* Unity skeleton
+  (component #3) as the primary viz; the procedural driver remains a fallback/sanity tool.
+  `eval_pose.py` (#4) and the schema are unaffected. Blender↔Unity link = the FBX/glTF
+  asset pipeline (Unity auto-reimports); there is no realtime socket and none is needed.
+
+## 11. Racket as an appended rigid segment (decided 2026-07-24)
+
+The badminton racket is modeled as a **rigid 2-node segment appended to the SMPL tree**,
+NOT a body joint (a racket is a stiff end-effector, not a rotation point).
+
+- **Topology:** `racket_grip` (index 24, parent = hand/wrist) → `racket_head` (index 25,
+  parent = 24), shaft ~0.66 m. The **24 SMPL body joints stay canonical** so `eval_pose`
+  (MPJPE vs SMPL GT, which has no racket) uses joints 0–23 only. The racket lives in a
+  clearly-separated `racket` block / appended indices, never woven into the SMPL body indices.
+- **Driver:** attaches to the SMPL wrist/hand (SMPL has one hand joint, no fingers — the old
+  MediaPipe-hand-landmark `RacketVisual` approach does not port). Source: `detect_racket.py`
+  (2D box, works) now; **RacketVision** 5-keypoints (grip/tip/shaft) later.
+- **Two levels.** **L1 (rigid, rides along):** racket visible on the twin; does NOT improve
+  the wrist (it inherits the wrist's jitter). **L2 (fusion):** use the well-detected racket as
+  a constraint to stabilize the noisy SMPL wrist/hand — the real payoff — via a small IK /
+  least-squares fit; needs RacketVision keypoints. The badminton wrist snap is the hardest
+  thing to capture from monocular RGB, so the racket-as-prior is genuinely valuable here.
+- **Sequencing (decided):** **SMPL body first**, then L1, then L2. The racket was off the
+  December critical path; this re-adds it as a staged extension *behind* the body deliverable.

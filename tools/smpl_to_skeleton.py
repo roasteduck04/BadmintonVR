@@ -27,12 +27,14 @@ SMPL_JOINT_NAMES = [
 SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14,
                 16, 17, 18, 19, 20, 21]
 
-# WHAM world frame -> Unity frame (Y-up, left-handed). WHAM is right-handed;
-# flipping Z converts handedness. VERIFY visually in Unity (Task 5); adjust this
-# matrix if the twin comes out mirrored or upside-down.
-WORLD_TO_UNITY = np.array([[1.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0],
-                           [0.0, 0.0, -1.0]])
+# Pose-engine camera frame -> Unity frame (Y-up, left-handed). ROMP/SMPL output is
+# vision-camera convention (X right, Y DOWN, Z forward, right-handed). Flipping Y
+# alone puts Y up AND converts handedness (odd number of axis flips) — verified on
+# test_6 (2026-07-24): head above pelvis above ankles, +1.38 m stature, not mirrored.
+# A Z-flip instead (the earlier provisional value) left the twin upside-down.
+WORLD_TO_UNITY = np.array([[1.0, 0.0,  0.0],
+                           [0.0, -1.0, 0.0],
+                           [0.0, 0.0,  1.0]])
 
 # Approximate SMPL rest pose (Y-up meters), a T-pose. Used only by make_synthetic
 # so Unity + eval can be exercised with no GPU. Index-aligned to SMPL_JOINT_NAMES.

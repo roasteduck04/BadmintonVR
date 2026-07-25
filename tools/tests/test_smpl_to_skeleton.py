@@ -25,10 +25,12 @@ def test_constants_are_consistent():
     assert n[15] == "head" and s2s.SMPL_PARENTS[15] == 12
 
 
-def test_apply_transform_flips_z_by_default():
+def test_apply_transform_flips_y_by_default():
+    # ROMP/SMPL is vision-camera (Y-down, right-handed); the default transform
+    # flips Y to reach Unity (Y-up, left-handed). Verified upright on test_6.
     pts = np.array([[1.0, 2.0, 3.0]])
     out = s2s.apply_transform(pts)
-    np.testing.assert_allclose(out, [[1.0, 2.0, -3.0]])
+    np.testing.assert_allclose(out, [[1.0, -2.0, 3.0]])
 
 
 def test_apply_transform_rejects_bad_shape():
@@ -59,8 +61,8 @@ def test_build_v2_document_applies_transform_to_joints():
     joints[0, 0] = [1.0, 2.0, 3.0]               # pelvis
     doc = s2s.build_v2_document("clipB", joints, fps=30.0)
     fl = doc["frames"][0]["joints_flat"]
-    assert fl[0:3] == [1.0, 2.0, -3.0]           # z flipped
-    assert doc["frames"][0]["root_world"] == [1.0, 2.0, -3.0]
+    assert fl[0:3] == [1.0, -2.0, 3.0]           # y flipped (Unity Y-up)
+    assert doc["frames"][0]["root_world"] == [1.0, -2.0, 3.0]
 
 
 def test_build_v2_document_includes_smpl_block_when_pose_given():
