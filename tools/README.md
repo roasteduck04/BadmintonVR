@@ -256,6 +256,47 @@ renderable joint spheres per body and re-registers the panel. Per-body toggles: 
 raw⟷smooth (spring 0.12 s, −85% jitter) + Skeleton + Mesh + Joints. Stick-armature bones
 are viewport-only and never appear in a render — that is what the joint spheres are for.
 
+### Rendering the twin to video
+
+`side_by_side_video.py` — **the presentable output**: the source clip beside the smoothed
+twin, with a colour key. One command, no Blender window:
+
+```bash
+python tools/side_by_side_video.py test_6
+```
+
+→ `data/render/test_6_video_vs_twin.mp4` (gitignored), 2560×720, ~1 min. It renders the twin
+panel through `blender/render_compare.py` (headless, newest installed Blender, or `--blender`)
+and stacks it against `data/raw/test_6.mp4` with ffmpeg. All text lives here rather than in
+the 3D scene: titles and the key are placed in pixels, cannot be occluded by a limb, and
+cover both panels — only one of which Blender renders at all. Swatch colours are the linear
+values from `racket_viewer` converted to sRGB, so the key matches what Blender draws.
+
+The key is the point of this view. On test_6 most frames have no racket detection, so the
+racket is a forearm prior and shows **red**; unlabelled, that reads as a tracking failure
+rather than as the confidence signal it is.
+
+`blender/render_compare.py` — the Blender half, usable alone:
+
+```bash
+"/c/Program Files/Blender Foundation/Blender 5.2/blender.exe" -b models/smpl/test_6_compare.blend -P tools/blender/render_compare.py
+```
+
+Renders the smoothed twin by default; `--bodies A,B` gives the old raw-vs-smoothed pair in
+one frame. It calls `racket_viewer.build()` first, so the racket comes from the current lift
+JSON rather than from whatever was last saved into the .blend — **the saved file has no
+racket in it at all**. The camera is **computed**: every frame's bone heads and racket bounds
+are sampled, then the camera is pushed back along the player's mean facing direction until
+nothing crops. Engine is Workbench in "Object" colour mode, which is what keeps the racket's
+confidence colours intact in the render; the body is blue so that green/amber/red mean
+confidence and nothing else. Useful flags: `--still N` (one PNG instead of the clip — check
+framing before paying for 189 frames), `--azimuth/--elevation`, `--joints`, `--res 1920x1080`.
+
+⚠️ Hiding a body means **excluding its collection from the view layer**, not setting
+`hide_render`: the racket keyframes its own `hide_render` every frame, so any value set
+outside the action is overwritten the moment the render advances and the unwanted racket
+sails through the shot on its own animation.
+
 ## Racket (Phase 2.5)
 
 `detect_racket.py` — zero-shot COCO "tennis racket" box probe, runs locally (fallback).

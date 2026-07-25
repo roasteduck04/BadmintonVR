@@ -1426,3 +1426,54 @@ So a 7.6 s clip is **a few minutes of wall-clock on a warm Colab VM, ~20 s local
 roughly half an hour on a cold VM where the OpenMMLab install has to be rebuilt. The local
 side scales linearly with frame count and is nowhere near the bottleneck; caching the Colab
 env to Drive remains the highest-value operational fix.
+
+---
+
+## 2026-07-26 — headless render: source footage beside the smoothed twin
+`tools/blender/render_compare.py`. Same scene the N-panels drive
+(`models/smpl/test_6_compare.blend`), now rendered to
+`data/render/test_6_raw_vs_smooth.mp4` — 1280×720 H.264, 189 frames @ 25 fps, ~1 min.
+
+Three things were worth getting right, and each was found by looking at the output:
+
+- **The saved .blend has no racket.** `Racket_A/B` only ever lived in the running session.
+  The render script calls `racket_viewer.build()` on load, which also means the video always
+  reflects the current lift instead of the state of the last manual save.
+- **The camera is computed, not authored.** Bone heads plus racket bounds are sampled every
+  frame, and the camera backs off along the players' measured facing direction until every
+  sample projects inside the frame. First attempt framed the bodies and *then* added the
+  "RAW"/"SMOOTH" text, which put the text off-screen — where it was invisible but still cast
+  a shadow, so the floor grew a smear of unreadable letters. Labels are now created first and
+  their extent goes into the framing cloud.
+- **Workbench, "Object" colour mode.** The racket's confidence colours are keyframed onto
+  `object.color`; any other shading mode renders them uniform and silently implies three
+  times more measured data than exists. Shadows are off — with two bodies, two rackets and
+  floating text they overlap into what reads as extra limbs. Cavity carries the depth.
+
+Blender 5.x API note: `image_settings.file_format = "FFMPEG"` now raises
+`enum "FFMPEG" not found` unless `image_settings.media_type` is set to `"VIDEO"` first. The
+error names the codec, so it reads like a build without ffmpeg support; it is not.
+
+**Reframed the same day, on request.** The deliverable is now the **source clip beside the
+smoothed twin**, not raw twin vs smooth twin: `tools/side_by_side_video.py test_6` →
+`data/render/test_6_video_vs_twin.mp4` (2560×720, ~1 min). `render_compare.py` renders only
+the twin panel (`--bodies B` by default, `A,B` still gives the old pair) and ffmpeg stacks it
+against `data/raw/test_6.mp4`.
+
+- **All text moved out of the 3D scene** into the ffmpeg composite. Text in Blender has to be
+  placed before the camera is framed and then re-checked against it; on the finished frame it
+  is placed in pixels, cannot be occluded by a limb, and can label the video panel, which
+  Blender never renders. No burn-in, no frame counter, no numbers anywhere — asked for.
+- **The body is blue now.** It was green, which is also the racket's "fully measured" green,
+  so a colour key would have had one colour meaning two unrelated things. Green/amber/red are
+  now the racket's confidence and nothing else.
+- **Colour key, bottom right panel.** Most of test_6 has no racket detection, so the racket
+  is a forearm prior and shows red for long stretches; unlabelled that reads as a broken
+  tracker rather than as the honest confidence signal it is.
+
+⚠️ Blender gotcha worth keeping: hiding the unwanted body needs `layer_collection.exclude`,
+not `hide_render`. `racket_viewer` **keyframes** `hide_render` on the racket (it hides itself
+where there is no racket to draw), so anything set outside the action is overwritten on the
+next frame — the first single-twin render had the raw twin's racket floating through the shot
+with no body attached. `hide_set()` does not help either: it is the viewport eye, not the
+render flag.
