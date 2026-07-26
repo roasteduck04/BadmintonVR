@@ -252,9 +252,12 @@ frames. Smoothing moves the head a median **5.8 cm** on test_6, rising to ~10 cm
 `blender/twin_compare.py` — the raw-vs-smoothed comparison viewer for
 `models/smpl/test_6_compare.blend` (gitignored — regenerate locally). Open the .blend →
 Scripting → Run (Alt+P) → `N` → **"TwinCompare"** tab. Idempotent: it rebuilds the 24
-renderable joint spheres per body and re-registers the panel. Per-body toggles: Style
-raw⟷smooth (spring 0.12 s, −85% jitter) + Skeleton + Mesh + Joints. Stick-armature bones
-are viewport-only and never appear in a render — that is what the joint spheres are for.
+renderable joint spheres **and bone arrows** per body and re-registers the panel. Per-body
+toggles: Style raw⟷smooth (spring 0.12 s, −85% jitter) + Skeleton + Mesh + Joints + Bones.
+Stick-armature bones are viewport-only and never appear in a render — that is what the
+spheres and arrows are for. Each arrow is pinned to its parent joint by COPY_LOCATION and
+stretched to the child by STRETCH_TO, so it follows any action with nothing to keyframe and
+nothing to rebuild; 23 arrows for 24 joints.
 
 ### Rendering the twin to video
 
@@ -284,18 +287,72 @@ rather than as the confidence signal it is.
 
 Renders the smoothed twin by default; `--bodies A,B` gives the old raw-vs-smoothed pair in
 one frame. It calls `racket_viewer.build()` first, so the racket comes from the current lift
-JSON rather than from whatever was last saved into the .blend — **the saved file has no
-racket in it at all**. The camera is **computed**: every frame's bone heads and racket bounds
-are sampled, then the camera is pushed back along the player's mean facing direction until
-nothing crops. Engine is Workbench in "Object" colour mode, which is what keeps the racket's
-confidence colours intact in the render; the body is blue so that green/amber/red mean
-confidence and nothing else. Useful flags: `--still N` (one PNG instead of the clip — check
-framing before paying for 189 frames), `--azimuth/--elevation`, `--joints`, `--res 1920x1080`.
+JSON rather than from whatever was last saved into the .blend. ⚠️ The .blend **does** carry a
+racket if it was last saved after an interactive `racket_viewer` run, and skipping the
+rebuild does not remove it — its keyframed `hide_render` puts it straight back the moment the
+render advances a frame. `--no-racket` therefore *deletes* `Racket_A`/`Racket_B` outright
+(in memory; this process never saves the file). The camera is **computed**: every frame's
+bone heads and racket bounds are sampled, then the camera is pushed back along the player's
+mean facing direction until nothing crops.
+
+Engine is Workbench in "Object" colour mode, which is what keeps the racket's confidence
+colours intact in the render; the body is blue so that green/amber/red mean confidence and
+nothing else. Note that Workbench "Object" mode reads `object.color` and **ignores
+materials** — node colours have to be set on the object, which is why `render_compare` sets
+them rather than relying on the materials `twin_compare` gives the geometry.
+
+Useful flags: `--still N` (one PNG instead of the clip — check framing before paying for 189
+frames), `--azimuth/--elevation`, `--res 1920x1080`, and:
+
+| Flag | What |
+|---|---|
+| `--joints` / `--bones` | the 24 joint spheres / the 23 bone arrows |
+| `--no-mesh` | hide the skin: nodes and arrows alone |
+| `--xray A` | global transparency, `0`–`1`. The only way nodes read through a solid mesh — Workbench has no per-object alpha, so this fades the racket and the floor too |
+| `--rest` | the armature's REST pose (T-pose) instead of the animation |
+| `--save-camera P` / `--camera P` | solve the framing once and reuse it, so sibling panels share one scale. Stored relative to the body's origin, so the second twin (1.4 m away) still lands centred |
+| `--dump-joints P` | write each joint's pixel position for `--still`, projected with the same `world_to_camera_view` the render used |
 
 ⚠️ Hiding a body means **excluding its collection from the view layer**, not setting
 `hide_render`: the racket keyframes its own `hide_render` every frame, so any value set
 outside the action is overwritten the moment the render advances and the unwanted racket
 sails through the shot on its own animation.
+
+`quad_video.py` — **the progress showcase**: four views of one clip in a 2×2 grid.
+
+```bash
+python tools/quad_video.py test_6
+```
+
+→ `data/render/test_6_quad.mp4` (gitignored), 1920×1080. Top row: the raw pose as nodes +
+bone vectors with no mesh, then the same raw pose with the mesh. Bottom row: the smoothed
+pose with the mesh, then the source clip. Three headless Blender renders plus one ffmpeg
+composite; titles and the colour key are drawn here, on the finished frame.
+
+Panel 1 solves the camera and saves it; panels 2 and 3 inherit it. Without that the three
+renders each frame themselves — a body without its mesh samples a smaller volume, and the raw
+and smoothed bodies do not sweep the same one — and three slightly different twin sizes read
+as a rendering bug rather than as the pose difference the grid exists to show.
+
+The two mesh panels are X-ray, so **read the racket's confidence colour off the no-mesh
+panel**: global transparency mutes it. `--xray` trades node visibility against skin
+solidity. The floor is off in all three: X-ray dissolves it anyway, and the compare twins
+play in place, so it carries no motion information.
+
+`joint_diagram.py` — a labelled reference figure of the SMPL-24 tree.
+
+```bash
+python tools/joint_diagram.py
+```
+
+→ `data/render/smpl24_joints.png` (gitignored). Rest pose, front view, every joint labelled
+with its index and its `skeleton.json` name, spine chain highlighted. Label positions come
+from `render_compare --dump-joints`, so a label cannot drift off its node. Labels sit in
+margin columns and relax apart until no two are closer than one row — there are no per-joint
+offsets to re-tune if you change `--res` or `--body`.
+
+Rest pose rather than a frame of the clip: a mid-smash figure folds the arms across the
+torso and half the labels end up pointing into the same few hundred pixels.
 
 ## Racket (Phase 2.5)
 

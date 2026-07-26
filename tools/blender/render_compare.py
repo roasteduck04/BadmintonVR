@@ -42,6 +42,7 @@ the body was green too, the colour key had one colour standing for two unrelated
 """
 
 import argparse
+import json
 import math
 import pathlib
 import sys
@@ -53,15 +54,34 @@ from mathutils import Vector
 # Linear RGB, matching `racket_viewer`'s palette. The colour key in side_by_side_video.py
 # converts these same values to sRGB for its swatches -- keep the two in step.
 BODY_COLOUR = (0.42, 0.58, 0.85, 1.0)
+# Workbench "Object" mode reads object.color and ignores materials, so the node colours
+# have to be set here even though twin_compare gives the geometry a material too.
+JOINT_COLOUR = (1.00, 0.95, 0.55, 1.0)      # warm cream: reads over blue skin and dark floor
+BONE_COLOUR = (0.98, 0.98, 1.00, 1.0)
 
 BODIES = {
     "A": {"armature": "SMPL-male.001", "mesh": "SMPL-mesh-male.001", "action": "act_raw",
-          "collection": "A_raw_left", "joints": "A_joints_left",
+          "collection": "A_raw_left", "joints": "A_joints_left", "bones": "A_bones_left",
           "racket_joints": "A_racket_joints"},
     "B": {"armature": "SMPL-male", "mesh": "SMPL-mesh-male", "action": "act_smooth",
-          "collection": "B_smooth_right", "joints": "B_joints_right",
+          "collection": "B_smooth_right", "joints": "B_joints_right", "bones": "B_bones_right",
           "racket_joints": "B_racket_joints"},
 }
+
+# Blender bone name -> (SMPL index, the name skeleton.json uses). The rig orders its bones
+# down each limb; the SMPL contract interleaves left/right and threads the spine between
+# them, so the two orders genuinely differ and this table is not decoration.
+SMPL_BONE_ORDER = [
+    ("Pelvis", 0, "pelvis"), ("L_Hip", 1, "left_hip"), ("R_Hip", 2, "right_hip"),
+    ("Spine1", 3, "spine1"), ("L_Knee", 4, "left_knee"), ("R_Knee", 5, "right_knee"),
+    ("Spine2", 6, "spine2"), ("L_Ankle", 7, "left_ankle"), ("R_Ankle", 8, "right_ankle"),
+    ("Spine3", 9, "spine3"), ("L_Foot", 10, "left_foot"), ("R_Foot", 11, "right_foot"),
+    ("Neck", 12, "neck"), ("L_Collar", 13, "left_collar"), ("R_Collar", 14, "right_collar"),
+    ("Head", 15, "head"), ("L_Shoulder", 16, "left_shoulder"),
+    ("R_Shoulder", 17, "right_shoulder"), ("L_Elbow", 18, "left_elbow"),
+    ("R_Elbow", 19, "right_elbow"), ("L_Wrist", 20, "left_wrist"),
+    ("R_Wrist", 21, "right_wrist"), ("L_Hand", 22, "left_hand"), ("R_Hand", 23, "right_hand"),
+]
 
 OVERLAY_COLLECTION = "Render_Overlay"
 CAMERA_NAME = "RenderCam_Compare"
@@ -85,9 +105,27 @@ def parse_args(argv):
                    help="render this single frame as a PNG instead of the animation")
     p.add_argument("--no-racket", action="store_true", help="skip the racket rebuild")
     p.add_argument("--joints", action="store_true", help="also show the 24 joint spheres")
+    p.add_argument("--bones", action="store_true",
+                   help="also show the SMPL bone arrows (parent joint -> child joint)")
+    p.add_argument("--no-mesh", action="store_true",
+                   help="hide the body mesh: nodes and bones alone, over the floor")
+    p.add_argument("--xray", type=float, default=None,
+                   help="make everything translucent (0-1); the only way nodes read "
+                        "through a solid mesh")
     p.add_argument("--no-floor", action="store_true", help="skip the ground plane")
     p.add_argument("--samples", type=int, default=1,
                    help="frame stride when measuring the framing (1 = every frame)")
+    p.add_argument("--rest", action="store_true",
+                   help="show the armature's REST pose instead of the animation "
+                        "(the clearest layout for a labelled reference diagram)")
+    p.add_argument("--dump-joints", default=None,
+                   help="write the 24 joints' pixel positions for --still to this json, "
+                        "for an annotator to label")
+    p.add_argument("--save-camera", default=None,
+                   help="write the solved framing to this json (relative to the repo root)")
+    p.add_argument("--camera", default=None,
+                   help="reuse a --save-camera json instead of solving; keeps sibling "
+                        "panels at one scale")
     return p.parse_args(args)
 
 
@@ -115,6 +153,20 @@ def build_racket():
     return racket_viewer.build()
 
 
+def drop_racket():
+    """Delete any racket the .blend was saved with.
+
+    Skipping the rebuild is not enough: a scene saved after an interactive `racket_viewer`
+    run still carries `Racket_A`/`Racket_B`, and their keyframed `hide_render` puts them
+    back on screen the moment the render advances. Removing the objects is the only state
+    the animation cannot undo, and costs nothing -- this process never saves the file.
+    """
+    removed = [o.name for o in list(bpy.data.objects) if o.name.startswith("Racket_")]
+    for name in removed:
+        bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
+    return removed
+
+
 def layer_collection(name, root=None):
     """The view-layer node for a collection, searched depth-first. None if absent."""
     root = root or bpy.context.view_layer.layer_collection
@@ -127,7 +179,25 @@ def layer_collection(name, root=None):
     return None
 
 
-def set_visibility(keys, show_joints):
+def ensure_nodes():
+    """Build the joint spheres and bone arrows if this .blend predates them.
+
+    `twin_compare` is the module that owns both, and it is idempotent, so calling it here
+    costs nothing when the collections already exist and saves the caller from having to
+    open the scene interactively once before the first render.
+    """
+    here = str(pathlib.Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import twin_compare
+    for key, spec in BODIES.items():
+        if bpy.data.collections.get(spec["joints"]) is None:
+            twin_compare.build_joints(key)
+        if bpy.data.collections.get(spec["bones"]) is None:
+            twin_compare.build_bones(key)
+
+
+def set_visibility(keys, show_joints, show_bones=False, show_mesh=True):
     """Pin exactly what renders: the chosen bodies and their rackets, nothing else.
 
     Unselected bodies are **excluded from the view layer**, not merely hidden. The racket
@@ -139,7 +209,8 @@ def set_visibility(keys, show_joints):
     """
     for key, spec in BODIES.items():
         on = key in keys
-        for coll_name in (spec["collection"], spec["joints"], spec["racket_joints"]):
+        for coll_name in (spec["collection"], spec["joints"], spec["bones"],
+                          spec["racket_joints"]):
             node = layer_collection(coll_name)
             if node is not None:
                 node.exclude = not on
@@ -151,7 +222,7 @@ def set_visibility(keys, show_joints):
             raise RuntimeError(f"{spec['armature']}/{spec['mesh']} missing -- "
                                "is this test_6_compare.blend?")
         arm.hide_render = True                  # armature bones never render anyway
-        mesh.hide_render = False
+        mesh.hide_render = not show_mesh
         mesh.color = BODY_COLOUR                # Workbench "Object" mode reads this
 
         action = bpy.data.actions.get(spec["action"])
@@ -167,12 +238,16 @@ def set_visibility(keys, show_joints):
                 ad.action_slot = slots[0]
 
         # The racket's own spheres duplicate what the racket already shows; the body's 24
-        # joint spheres are opt-in.
-        for coll_name, visible in ((spec["joints"], show_joints),
-                                   (spec["racket_joints"], False)):
+        # joint spheres and its bone arrows are opt-in.
+        for coll_name, visible, colour in (
+                (spec["joints"], show_joints, JOINT_COLOUR),
+                (spec["bones"], show_bones, BONE_COLOUR),
+                (spec["racket_joints"], False, None)):
             coll = bpy.data.collections.get(coll_name)
             for o in (coll.objects if coll else []):
                 o.hide_render = not visible
+                if colour is not None:
+                    o.color = colour
 
 
 def overlay_collection(reset=False):
@@ -280,6 +355,81 @@ def place_camera(points, facing, azimuth_deg, elevation_deg, margin):
     return cam, centre
 
 
+def set_rest_pose(keys, on):
+    """Swap the armatures between REST and POSE. The node geometry follows for free.
+
+    The joint spheres and bone arrows are driven by constraints against the pose bones
+    rather than by keyframes, so they land on the rest skeleton with nothing to rebuild.
+    """
+    for key in keys:
+        bpy.data.objects[BODIES[key]["armature"]].data.pose_position = "REST" if on else "POSE"
+    bpy.context.view_layer.update()
+
+
+def dump_joints(path, key, cam):
+    """Where each SMPL joint lands in the rendered image, in pixels, top-left origin.
+
+    Projected here rather than guessed by the annotator: only Blender knows the solved
+    camera, and `world_to_camera_view` is the same projection the render itself used, so a
+    label can never drift off its node.
+    """
+    scene = bpy.context.scene
+    arm = bpy.data.objects[BODIES[key]["armature"]]
+    width = scene.render.resolution_x
+    height = scene.render.resolution_y
+    out = []
+    for bone_name, index, smpl_name in SMPL_BONE_ORDER:
+        bone = arm.pose.bones.get(bone_name)
+        if bone is None:
+            raise RuntimeError(f"bone {bone_name} missing from {arm.name}")
+        world = arm.matrix_world @ bone.head
+        ndc = world_to_camera_view(scene, cam, world)
+        out.append({"index": index, "name": smpl_name, "bone": bone_name,
+                    "x": ndc.x * width, "y": (1.0 - ndc.y) * height,
+                    "world": [world.x, world.y, world.z]})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"resolution": [width, height], "joints": out}, indent=2),
+                    encoding="utf-8")
+    print(f"render_compare: joints -> {path}")
+
+
+def body_origin(key):
+    return bpy.data.objects[BODIES[key]["armature"]].matrix_world.translation.copy()
+
+
+def camera_state(cam, centre, key):
+    """The solved framing, stored RELATIVE to the body it was solved for.
+
+    The two twins stand 1.4 m apart in the scene, so an absolute camera reused on the
+    other body would frame empty floor. Storing the offset lets a sibling panel inherit
+    the distance and lens -- which is what keeps the twins the same size across a grid --
+    while still centring on its own body.
+    """
+    origin = body_origin(key)
+    return {"lens": cam.data.lens,
+            "location_local": list(cam.location - origin),
+            "centre_local": list(Vector(centre) - origin)}
+
+
+def apply_camera(state, key):
+    """Rebuild a camera from `camera_state`, re-anchored on this body."""
+    origin = body_origin(key)
+    cam_data = bpy.data.cameras.get(CAMERA_NAME) or bpy.data.cameras.new(CAMERA_NAME)
+    cam_data.lens = state["lens"]
+    cam = bpy.data.objects.get(CAMERA_NAME)
+    if cam is None:
+        cam = bpy.data.objects.new(CAMERA_NAME, cam_data)
+        overlay_collection().objects.link(cam)
+    else:
+        cam.data = cam_data
+    centre = origin + Vector(state["centre_local"])
+    cam.location = origin + Vector(state["location_local"])
+    cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
+    bpy.context.view_layer.update()
+    bpy.context.scene.camera = cam
+    return cam, centre
+
+
 def add_floor(lo, hi):
     """A plane at the lowest foot, so the render has a ground to read motion against."""
     coll = bpy.data.collections[OVERLAY_COLLECTION]
@@ -294,7 +444,7 @@ def add_floor(lo, hi):
     ob.color = FLOOR_COLOUR
 
 
-def configure_render(width, height, out_path, still):
+def configure_render(width, height, out_path, still, xray=None):
     """Workbench, not EEVEE: this render is a measurement read-out, not a beauty shot.
 
     Workbench's "Object" colour mode is also what makes the racket's confidence colours
@@ -314,6 +464,13 @@ def configure_render(width, height, out_path, still):
     # read as extra limbs. Cavity gives the depth instead.
     shading.show_shadows = False
     shading.show_cavity = True
+    # X-ray is Workbench's only transparency and it is global -- there is no per-object
+    # alpha to make just the skin see-through. Turning it on is what lets the joints and
+    # bone arrows read at all in a panel that also renders the mesh; without it they are
+    # sealed inside the body and the panel is indistinguishable from a plain mesh render.
+    shading.show_xray = xray is not None
+    if xray is not None:
+        shading.xray_alpha = xray
     scene.display.render_aa = "8"
     r.use_stamp = False              # no burn-in: the composite owns all text
 
@@ -342,15 +499,42 @@ def main():
     width, height = (int(v) for v in args.res.lower().split("x"))
     out = repo_root() / args.out
 
-    summary = None if args.no_racket else build_racket()
-    set_visibility(keys, args.joints)
+    # Before anything projects: `world_to_camera_view` reads the scene's aspect ratio, so
+    # both the framing solve and the joint dump have to see the resolution we will render at,
+    # not whatever the .blend was saved with.
+    bpy.context.scene.render.resolution_x = width
+    bpy.context.scene.render.resolution_y = height
+
+    summary = None
+    if args.no_racket:
+        dropped = drop_racket()
+        if dropped:
+            print(f"render_compare: dropped saved racket {dropped}")
+    else:
+        summary = build_racket()
+    ensure_nodes()
+    set_visibility(keys, args.joints, args.bones, not args.no_mesh)
+    set_rest_pose(keys, args.rest)
     overlay_collection(reset=True)
+    # Sampled even when the camera is inherited: the floor still needs the extent.
     points, facing = sample_scene(keys, args.samples)
     lo, hi = bounds(points)
-    cam, centre = place_camera(points, facing, args.azimuth, args.elevation, args.margin)
+    if args.camera:
+        state = json.loads((repo_root() / args.camera).read_text(encoding="utf-8"))
+        cam, centre = apply_camera(state, keys[0])
+    else:
+        cam, centre = place_camera(points, facing, args.azimuth, args.elevation, args.margin)
+    if args.save_camera:
+        path = repo_root() / args.save_camera
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(camera_state(cam, centre, keys[0]), indent=2),
+                        encoding="utf-8")
+        print(f"render_compare: camera -> {path}")
     if not args.no_floor:
         add_floor(lo, hi)
-    configure_render(width, height, out, args.still)
+    configure_render(width, height, out, args.still, args.xray)
+    if args.dump_joints:
+        dump_joints(repo_root() / args.dump_joints, keys[0], cam)
 
     scene = bpy.context.scene
     print(f"render_compare: bodies {','.join(keys)}, {len(points)} sample points, "

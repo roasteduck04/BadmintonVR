@@ -1477,3 +1477,60 @@ where there is no racket to draw), so anything set outside the action is overwri
 next frame — the first single-twin render had the raw twin's racket floating through the shot
 with no body attached. `hide_set()` does not help either: it is the viewport eye, not the
 render flag.
+
+## 2026-07-26 — Bone vectors, the four-up showcase, and a labelled joint figure
+
+Three things landed, plus two real bugs found on the way.
+
+**Bone arrows (`tools/blender/twin_compare.py`).** The scene had renderable joint spheres but
+nothing for the bones between them: Blender's stick armature is a viewport overlay and never
+reaches a Workbench render, so every twin render to date has shown skin or loose dots and
+never the topology. `build_bones(prefix)` now writes one tapered arrow per parent→child pair
+— pinned to the parent joint by COPY_LOCATION, stretched to the child by STRETCH_TO with
+`rest_length=1.0` and `volume='NO_VOLUME'`, so a unit-length mesh reads as metres and a long
+bone gets a longer arrow, never a fatter one. No keyframes, nothing to rebuild when the
+action changes. 23 arrows for 24 joints; `root` is a rig handle, not a joint, so `Pelvis`
+starts the tree. New "Bones" toggle beside "Joints" in the N-panel.
+
+**`tools/quad_video.py`** — 2×2 progress showcase → `data/render/<id>_quad.mp4`, 1920×1080.
+Raw pose as nodes+vectors without mesh · raw with mesh · smoothed with mesh · source clip.
+
+- **One camera for three panels.** Each `render_compare` run solves its own framing, and a
+  body without its mesh samples a smaller volume than one with it, so three independent
+  solves put the twin at three sizes. Side by side that reads as a rendering inconsistency
+  rather than as the pose difference the grid exists to show. Panel 1 saves the solved
+  camera; the rest inherit it. Stored **relative to the body's origin**, so body B — 1.4 m
+  away in the scene — still lands centred in its own panel (camera x 0.91 → 2.31, exactly
+  +1.4).
+- **X-ray is the only way nodes read through skin.** Workbench has no per-object alpha, so
+  the mesh panels fade *everything*, racket colours included. Read racket confidence off the
+  no-mesh panel. The floor is off in all three: X-ray dissolves it anyway and the compare
+  twins play in place, so it was carrying no motion information.
+- Titles hug each panel's top-left, not its centre — the racket reaches the top of frame on
+  the smash and a centred caption sits on it.
+
+**`tools/joint_diagram.py`** → `data/render/smpl24_joints.png`. Rest-pose front view, all 24
+joints labelled with index + `skeleton.json` name, spine chain highlighted. Positions come
+from the new `render_compare --dump-joints`, which projects through the same
+`world_to_camera_view` the render used, so a label cannot drift off its node. Labels relax
+apart in margin columns rather than cascading downward — a one-directional pack sent the
+five near-identical arm-joint y values 200 px below the limb they belong to and crossed every
+leader line. Near-ties in y break on distance from the body, so collar→shoulder→elbow→wrist→
+hand come out in limb order.
+
+⚠️ **Two bugs worth remembering:**
+
+- **`--no-racket` did not remove the racket.** It skipped the *rebuild*, but
+  `test_6_compare.blend` has been saved since an interactive `racket_viewer` run and carries
+  `Racket_A`/`Racket_B` — and their keyframed `hide_render` restores them on the next frame.
+  The README's claim that "the saved file has no racket in it at all" was false. `--no-racket`
+  now deletes the objects outright (in memory; the render process never saves the file).
+- **Resolution was set after the camera solve.** `world_to_camera_view` reads the scene
+  aspect ratio, so any `--res` whose aspect differed from the saved .blend framed against one
+  ratio and projected against another. Now set before both the solve and the dump.
+
+Also: Workbench "Object" colour mode reads `object.color` and **ignores materials**, so node
+colours are set on the objects in `render_compare`, not left to the materials `twin_compare`
+attaches. Blender on Windows occasionally exits non-zero after a render that completed fine,
+so `quad_video` gates on its own `render_compare: wrote` line plus the file existing rather
+than on the exit code — an exit-code check threw away three minutes of finished panels once.

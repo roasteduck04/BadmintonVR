@@ -104,3 +104,7 @@ data/moves/
 
 # Personal plan + reading (collaborator/institution names live ONLY here) — local only
 docs/for-me/
+
+# Render intermediates (panels, joint dumps, saved cameras) — the finished mp4/png beside
+# them are already covered by the image/video rules above.
+data/render/_*
