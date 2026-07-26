@@ -2,15 +2,10 @@
 
 Organized by audience so it's clear what's yours vs. the agent's working context.
 
-## 📗 `for-me/` — wenzhen's plan & reading
-- **DECEMBER-PLAN.md** — the current forward plan (scope, sprints S0–S9, capture route, decisions). **Start here.**
-- **TODO.md** — actionable next steps (blockers first).
-- **ROADMAP-BOARD.html** — kanban board (open in a browser).
-- **TIMELINE-DEC.html** — weekly July→December Gantt (open in a browser).
-- **ARCHITECTURE.html** — interactive codebase map.
-- **RESEARCH-BRIEF.pdf / .html** — the literature survey (26 papers + datasets + repos).
-- **DOCUMENTARY.md** — the project narrative / journal.
-- **guides/** — explainer · learn-unity · roadmap · parameter-tuning · muscle-buildout PDFs.
+## 📗 `for-me/` — wenzhen's plan & reading — **gitignored, local only**
+Personal planning: the December plan, TODO, roadmap/timeline/architecture HTML views,
+the literature brief, the project journal, and the guide PDFs. Deliberately not
+published — it is the only place collaborator and institution names belong.
 
 ## 🤖 `for-claude/` — the agent's working context
 - **PROGRESS.md** — append-only "what's built" ledger (read first; append a dated entry when something lands).

@@ -16,13 +16,6 @@ Nothing here needs a local GPU: the CPU route (MediaPipe, calibration, lifting,
 smoothing, Unity playback) runs on a laptop, and the two GPU passes — SMPL pose
 and racket keypoints — run as Colab notebooks that hand back a `.npz`/`.json`.
 
-> **Project context.** This started as a solo "video → Unity twin" experiment and is
-> now one lane of a team research project (collaborators) targeting a
-> **December 2026 milestone** on injury-prone badminton movement. This lane owns
-> video-to-twin and skeleton accuracy. Forward plan:
-> [`docs/for-me/DECEMBER-PLAN.md`](docs/for-me/DECEMBER-PLAN.md).
-> What is already built, in dated detail: [`docs/for-claude/PROGRESS.md`](docs/for-claude/PROGRESS.md).
-
 ## What works today
 
 **Pose — two routes, one output contract.**
@@ -79,7 +72,6 @@ writing a `moves` block into the json (schema 1.1) that Unity renders as a subti
 | `data/raw/` | source videos — **gitignored** (large, and they show people and places) |
 | `data/calib/` | per-clip court calibrations and cameras (`*_court.json`, `*_camera.json`) |
 | `data/skeleton/` | extracted `skeleton.json` per clip (`.skeleton.json` = v2, `.skeleton_racket.json` = v2 + racket) |
-| `docs/for-me/` | the plan: December scope, roadmap board, timeline, reading |
 | `docs/for-claude/` | working context: progress ledger, technical plans, research notes |
 | `docs/superpowers/` | design specs and implementation plans |
 
@@ -148,7 +140,7 @@ For Unity, copy the json into `Assets/StreamingAssets/skeleton/`, point
 | Near-live | 🔜 | inference server → in-Unity ONNX (Sentis) |
 
 VR is a downstream demo, not the research. Muscle activation, joint loads, and injury
-indicators are the biomechanics lane' lanes and are deliberately out of scope here.
+indicators are deliberately out of scope here.
 
 ## Privacy note
 

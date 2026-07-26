@@ -1,7 +1,6 @@
 # Research Direction: Video to Biomechanical Simulation to Injury Analysis for Badminton
 
-**OpenCap + Muscles in Action + OpenSim Moco**  
-a collaborator — May 2026
+**OpenCap + Muscles in Action + OpenSim Moco** — May 2026
 
 ---
 

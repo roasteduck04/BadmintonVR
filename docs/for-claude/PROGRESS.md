@@ -709,15 +709,15 @@ README (verified 2026-07-18):
   lands, Step C fusion consumes these keypoints instead of the COCO box
   (real orientation + roll, per `docs/for-claude/ai-smoothing-plan.md` Step D).
 
-## 2026-07-23 — Team re-plan (December milestone) + docs reorg
+## 2026-07-23 — December re-plan + docs reorg
 
-Project reframed into a **team deliverable** (collaborators), early-Dec-2026
-milestone. Forward plan now lives in `docs/for-me/DECEMBER-PLAN.md` (this session).
+Project reframed into a collaborative deliverable with an early-Dec-2026 target.
+Forward plan now lives in `docs/for-me/DECEMBER-PLAN.md` (this session).
 Delivered: research brief (`docs/for-me/RESEARCH-BRIEF.pdf`), reframed roadmap board
 + weekly timeline (`docs/for-me/ROADMAP-BOARD.html`, `docs/for-me/TIMELINE-DEC.html`),
 `docs/for-me/TODO.md`. **Pose-engine pivot to OpenCap** (biomech-grade video→OpenSim
-kinematics); wenzhen owns skeleton + twin + accuracy, the AI lane the team AI, the biomechanics lane
-muscle/injury. Validation = MultiSenseBadminton (public) → prof's 16 sensors later.
+kinematics); this lane owns skeleton + twin + accuracy, other lanes own the stroke AI
+and muscle/injury. Validation = MultiSenseBadminton (public) → prof's 16 sensors later.
 
 **docs/ reorganized by audience** (remap for older entries above):
 `docs/PROGRESS.md`→`docs/for-claude/PROGRESS.md`; `docs/DOCUMENTARY.md`→`docs/for-me/`;

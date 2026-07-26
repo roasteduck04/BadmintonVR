@@ -7,8 +7,8 @@ Supersedes the "skeleton.json v2 design intent" placeholder in `docs/for-me/DECE
 
 Take a **monocular RGB clip of one person moving** and produce a **biomechanically-structured
 skeleton with a real spine**, land it in Unity as a moving twin, and be able to **measure its
-accuracy** against ground truth. This is Stage 1 of the the biomechanics lane pipeline (video → 3D kinematics)
-and the thing the AI lane's team can build on.
+accuracy** against ground truth. This is Stage 1 of the biomechanics pipeline
+(video → 3D kinematics) and the thing downstream lanes build on.
 
 Explicitly **general pose estimation** — no badminton-specific models or data. Badminton only
 re-enters later, at fine-tuning/validation.
@@ -17,7 +17,7 @@ re-enters later, at fine-tuning/validation.
 
 The current pipeline emits **MediaPipe BlazePose (33 landmarks)**, which has **no pelvis joint,
 no spine chain, and no neck joint** — exactly the bones Unity Humanoid requires and the region
-(back + shoulder girdle) flagged as injury-prone. The meeting's "20 joints" (the AI lane) and
+(back + shoulder girdle) flagged as injury-prone. The meeting's "20 joints" and
 ">32 + a spine node" (wenzhen's notes) are both really asking for *the right topology, not more dots*.
 
 **SMPL** answers this directly: a 24-joint kinematic tree rooted at the pelvis with a true

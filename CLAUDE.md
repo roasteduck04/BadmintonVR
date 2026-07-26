@@ -12,19 +12,21 @@ approved design (phases, schema, decisions) before making architectural changes.
 append a dated entry there when something new lands.
 
 ## ⚠️ Active plan (reframed 2026-07-23) — READ THIS FIRST
-This is now a **team research deliverable** (collaborators) with a hard
-**early-December-2026 milestone** target. The current forward plan is
-**`docs/for-me/DECEMBER-PLAN.md`** (scope, sprints S0–S9, OpenCap pivot, capture
-route, validation, decisions log). Visual views: `docs/for-me/ROADMAP-BOARD.html`
-+ `docs/for-me/TIMELINE-DEC.html`; actions: `docs/for-me/TODO.md`; literature:
-`docs/for-me/RESEARCH-BRIEF.pdf`. The user (**wenzhen**) owns physics + video-to-twin
-+ skeleton accuracy; **the AI lane** owns the team AI; **the biomechanics lane** owns muscle/injury.
-The "Milestone phases" list below is the ORIGINAL pipeline framing — still accurate
-for what is BUILT, but superseded for forward planning by the December plan.
+This is now a research deliverable with a hard **early-December-2026** target. The
+current forward plan is **`docs/for-me/DECEMBER-PLAN.md`** (scope, sprints S0–S9,
+OpenCap pivot, capture route, validation, decisions log). Visual views:
+`docs/for-me/ROADMAP-BOARD.html` + `docs/for-me/TIMELINE-DEC.html`; actions:
+`docs/for-me/TODO.md`; literature: `docs/for-me/RESEARCH-BRIEF.pdf`. This lane owns
+physics + video-to-twin + skeleton accuracy; muscle/injury modelling is somebody
+else's lane and out of scope here. The "Milestone phases" list below is the ORIGINAL
+pipeline framing — still accurate for what is BUILT, but superseded for forward
+planning by the December plan.
 
-**docs/ layout:** `docs/for-me/` = wenzhen's plan + reading; `docs/for-claude/` =
-this agent's working context (PROGRESS ledger, technical plans, research notes);
-`docs/superpowers/` = specs/plans (skill convention).
+**docs/ layout:** `docs/for-me/` = wenzhen's plan + reading — **gitignored, local
+only**; it is the ONLY place collaborator/institution names belong, and nothing that
+gets published may reference them. `docs/for-claude/` = this agent's working context
+(PROGRESS ledger, technical plans, research notes); `docs/superpowers/` = specs/plans
+(skill convention).
 
 ## Milestone phases
 1. **Phase 1 (DONE):** phone clip → stick-figure/humanoid twin in Unity, pose

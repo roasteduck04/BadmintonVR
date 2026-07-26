@@ -12,13 +12,13 @@ A pipeline that turns ordinary **phone video of a badminton player** into a
 **moving 3D "twin" skeleton inside Unity**, replayed on a regulation court.
 Offline (file-based) first, near-live last.
 
-This is the current milestone of the larger the university badminton research project. It
+This is the current milestone of the larger badminton research project. It
 follows the phone/OpenCap-style capture direction from
 `research-direction-image-to-sim.md` and the pipeline/schema in
 `badminton_camera_research.md` (§6).
 
 ### Explicitly parked (not abandoned, just not this milestone)
-- Drone-based capture (the university scope doc)
+- Drone-based capture (scope doc)
 - Injury / biomechanics analysis (OpenSim Moco, muscle loads, MIA)
 - VR headset game
 - Multi-camera metric-accurate 3D rig (see §5 for the honest fidelity ladder)
